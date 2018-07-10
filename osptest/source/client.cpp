@@ -28,6 +28,7 @@ int main(){
         }
         printf("node created successfully\n");
         ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::PENDING),CLIENT_ENTRY);
+        test_file_send();
         while(1)
                 OspDelay(100);
 
@@ -37,7 +38,10 @@ int main(){
 
 
 void test_file_send(){
+        char file_name[] = "test_file_name";
 
+        ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::EACH),FILE_NAME_SEND_CMD,
+                        file_name,strlen(file_name)+1);
 }
 
 u32 CCInstance::GetDstNode(){
@@ -176,8 +180,14 @@ printf("get sign out ack\n");
                              }
                              break;
                              case FILE_NAME_SEND_CMD:{
+                                  if(!pMsg->content || pMsg->length <= 0){
+                                           OspLog(LOG_LVL_ERROR,"[InstanceEntry] pMsg is NULL\n");
+                                           OspPrintf(1,0,"[InstanceEntry] pMsg is NULL\n");
+                                           break;
+                                  }
+                                  strcpy((char*)file_name_path,(const char*)pMsg->content);
                                   post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),FILE_NAME_SEND
-                                                 ,file_name_path,sizeof(file_name_path),GetDstNode());
+                                                 ,pMsg->content,pMsg->length,GetDstNode());
 
                              }
                              break;

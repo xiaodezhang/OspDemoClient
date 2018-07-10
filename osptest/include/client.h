@@ -19,6 +19,7 @@
 #define MAX_FILE_NAME_LENGTH         200
 
 
+extern void test_file_send();
 typedef struct tagSinInfo{
         s8 g_Username[AUTHORIZATION_NAME_SIZE];
         s8 g_Passwd[AUTHORIZATION_NAME_SIZE];
