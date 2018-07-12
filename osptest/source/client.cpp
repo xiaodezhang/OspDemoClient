@@ -4,6 +4,7 @@
 CCApp g_cCApp;
 static u8 CancleFlag = 0;
 
+#define MAKEESTATE(state,event) ((u32)(event<< 4 +state))
 
 int main(){
 
@@ -72,6 +73,108 @@ void CCInstance::FileSendCmd2Client(){
 #endif
 }
 
+#if 1
+
+typedef struct tagCmdNode{
+        u32         EventState;
+        CCInstance::MsgProcess  c_MsgProcess;
+        struct      tagCmdNode *next;
+}tCmdNode;
+
+static tCmdNode *CmdChain = NULL;
+
+void CCInstance::ClientEntry(CMessage *const pMsg){
+
+printf("client entry\n");
+          m_dwdstNode = OspConnectTcpNode(inet_addr("172.16.236.241"),20000,10,3);
+          if(INVALID_NODE == m_dwdstNode){
+//                SetTimer(DISCONNET_TIMER, osp_test_interval);
+//                OspLog(LOG_LVL_KEY, "Connect extern node failed. exit.\n");
+//                OspTaskResume(g_hMainTask);
+                  return;
+          }
+          TSinInfo tSinInfo;
+          strcpy(tSinInfo.g_Username,"admin");
+          strcpy(tSinInfo.g_Passwd,"admin");
+          post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),SERVER_CONNECT_TEST,0,0,m_dwdstNode);
+}
+
+void CCInstance::MsgProcessInit(){
+
+#if 1
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,CLIENT_ENTRY),&CCInstance::ClientEntry);
+#endif
+}
+
+void CCInstance::NodeChainEnd(){
+
+        tCmdNode * Node;
+
+        Node = CmdChain;
+        if(!Node)
+                return;
+        while(Node->next){
+                free(Node);
+                Node = Node->next;
+        }
+}
+
+bool CCInstance::RegMsgProFun(u32 EventState,MsgProcess c_MsgProcess){
+
+        tCmdNode *Node,*NewNode;
+
+        Node = CmdChain;
+
+        if(!(NewNode = (tCmdNode*)malloc(sizeof(tCmdNode)))){
+                OspLog(LOG_LVL_ERROR,"[RegMsgProFun] node malloc error\n");
+                return false;
+        }
+
+        NewNode->EventState = EventState;
+        NewNode->c_MsgProcess = c_MsgProcess;
+
+        if(!CmdChain){
+                CmdChain = NewNode;
+                OspLog(SYS_LOG_LEVEL,"cmd chain init \n");
+                return true;
+        }
+
+        while(Node){
+                if(Node->EventState == EventState){
+                        OspLog(LOG_LVL_ERROR,"[RegMsgProFun] node already in \n");
+                        printf("[RegMsgProFun] node already in \n");
+                        return false;
+                }
+                Node = Node->next;
+        }
+        Node = NewNode;
+        Node->next = NULL;
+}
+
+bool CCInstance::FindProcess(u32 EventState,MsgProcess*c_MsgProcess){
+
+        tCmdNode *Node;
+
+        Node = CmdChain;
+        if(!CmdChain){
+                OspLog(LOG_LVL_ERROR,"[FindProcess] Node Chain is NULL\n");
+                printf("[FindProcess] Node Chain is NULL\n");
+                return false;
+        }
+        while(Node){
+                printf("node eventstate:%ld\n",Node->EventState);
+                printf("eventstate:%ld\n",EventState);
+                if(Node->EventState == EventState){
+                        *c_MsgProcess = Node->c_MsgProcess;
+                        return true;
+                }
+                Node = Node->next;
+        }
+        return false;
+}
+
+#endif
+
 void CCInstance::InstanceEntry(CMessage * const pMsg){
 
         printf("client instance entry\n");
@@ -81,6 +184,19 @@ void CCInstance::InstanceEntry(CMessage * const pMsg){
 
         u32 curState = CurState();
         u16 curEvent = pMsg->event;
+        MsgProcess c_MsgProcess;
+
+
+#if 1
+        if(FindProcess(MAKEESTATE(curState,curEvent),&c_MsgProcess)){
+                printf("find the EState\n");
+                (this->*c_MsgProcess)(pMsg);
+        }else{
+                OspLog(LOG_LVL_ERROR,"[InstanceEntry] can not find the EState\n");
+                printf("[InstanceEntry] can not find the EState\n");
+        }
+#else
+
 
         if(curEvent == SIGN_IN_ACK)
                 printf("%d\n",curState);
@@ -233,4 +349,7 @@ printf("get sign out ack\n");
         }
 
         OspPrintf(1,0,"instance entry\n");
+
+#endif
 }
+

@@ -25,8 +25,20 @@ typedef struct tagSinInfo{
         s8 g_Passwd[AUTHORIZATION_NAME_SIZE];
 }TSinInfo;
 
+
 class CCInstance : public CInstance{
+
+public:
+typedef void (CCInstance::*MsgProcess)(CMessage *const pMsg);
 private:
+
+typedef struct tagCmdNode{
+        u32         EventState;
+        CCInstance::MsgProcess  c_MsgProcess;
+        struct      tagCmdNode *next;
+}tCmdNode;
+
+
         u32         m_dwdstNode;
         u32         wDisInsID;
         SEMHANDLE   m_sem;
@@ -35,17 +47,25 @@ private:
         u8          buffer[BUFFER_SIZE];
 private:
         void InstanceEntry(CMessage *const);
+        tCmdNode *CmdChain = NULL;
 public:
         CCInstance(): m_dwdstNode(0),wDisInsID(0){
                 OspSemBCreate(&m_sem);
                 memset(file_name_path,0,sizeof(u8)*MAX_FILE_NAME_LENGTH);
                 memset(buffer,0,sizeof(u8)*BUFFER_SIZE);
+                MsgProcessInit();
         }
         ~CCInstance(){
                 OspSemDelete(m_sem);
+                NodeChainEnd();
         }
         u32 GetDstNode();
         void FileSendCmd2Client();
+        void ClientEntry(CMessage*);
+        void MsgProcessInit();
+        void NodeChainEnd();
+        bool RegMsgProFun(u32,MsgProcess);
+        bool FindProcess(u32,MsgProcess*);
 };
 
 typedef zTemplate<CCInstance,MAX_INS_NUM,CAppNoData,MAX_ALIAS_LENGTH> CCApp;
