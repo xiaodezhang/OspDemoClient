@@ -97,12 +97,137 @@ printf("client entry\n");
           strcpy(tSinInfo.g_Username,"admin");
           strcpy(tSinInfo.g_Passwd,"admin");
           post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),SERVER_CONNECT_TEST,0,0,m_dwdstNode);
+          post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON),SIGN_IN,(const void *)&tSinInfo,(u16)sizeof(tSinInfo),m_dwdstNode);
 }
+
+void CCInstance::SignInAck(CMessage * const pMsg){
+          if(pMsg->length <= 0 || !pMsg->content){
+                  OspLog(SYS_LOG_LEVEL,"sign in failed\n");
+                  OspPrintf(1,1,"sign in failed\n");
+                  printf("sign in failed\n");
+                  //TODO:向GUI发送重新登陆提示
+          }
+          if(strcmp((const char*)pMsg->content,"failed") == 0){
+                  OspLog(SYS_LOG_LEVEL,"sign in failed\n");
+                  OspPrintf(1,1,"sign in failed\n");
+                  printf("sign in failed\n");
+                  printf("content:%s\n",pMsg->content);
+                  //TODO:向GUI发送重新登陆提示
+          }
+          NextState(RUNNING_STATE);
+          //TODO,应该需要增加其他信息，目前是无法定位的，也有可能log函数自带定位
+          //，需要确认
+          OspLog(SYS_LOG_LEVEL,"sign in successfully\n");
+          OspPrintf(1,1,"sign in successfully\n");
+          printf("sign in successfully\n");
+
+          //测试登出
+          //TODO
+          post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON),SIGN_OUT,NULL,0,m_dwdstNode);
+//                                  post(wDisInsID,SIGN_OUT,NULL,0,m_dwdstNode);
+
+          printf("send sign out\n");
+#if 0
+
+          //测试文件上传
+          FILE* file;
+          size_t buffer_size;
+
+          if(!(file = fopen(file_name_path,"rb"))){
+                  printf("open file error\n");
+                  break;
+          }
+
+          buffer_size = fread(buffer,1,sizeof(char)*BUFFER_SIZE,file);
+          if(buffer_size > 0){
+                post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),FILE_UPLOAD
+                           ,buffer,buffer_size,GetDstNode());
+
+          }
+          //
+          while((buffer_size = fread(buffer,1,sizeof(char)*BUFFER_SIZE,file)) > 0){
+                  //TODO:Instance实例选择需要修改,增加中断变量
+                post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),FILE_UPLOAD
+                                ,buffer,buffer_size,m_dwdstNode);
+          }
+          fclose(file);
+#endif
+
+
+}
+
+void CCInstance::SignOutCmd(CMessage * const pMsg){
+          post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON),SIGN_OUT,NULL,0,m_dwdstNode);
+          OspLog(SYS_LOG_LEVEL,"get sign out cmd,send to server\n");
+          OspPrintf(1,1,"get sign out cmd,send to server\n");
+
+}
+void CCInstance::SignOutAck(CMessage * const pMsg){
+          NextState(IDLE_STATE);
+          OspLog(SYS_LOG_LEVEL,"sign out\n");
+          OspPrintf(1,1,"sign out\n");
+printf("get sign out ack\n");
+
+}
+void CCInstance::FileNameSendCmd(CMessage * const pMsg){
+          if(!pMsg->content || pMsg->length <= 0){
+                   OspLog(LOG_LVL_ERROR,"[InstanceEntry] pMsg is NULL\n");
+                   OspPrintf(1,0,"[InstanceEntry] pMsg is NULL\n");
+                   return;
+          }
+          strcpy((char*)file_name_path,(const char*)pMsg->content);
+          post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),FILE_NAME_SEND
+                         ,pMsg->content,pMsg->length,GetDstNode());
+
+}
+void CCInstance::FileNameAck(CMessage * const pMsg){
+          FILE* file;
+          size_t buffer_size;
+
+
+          wDisInsID = pMsg->srcid;
+          if(!(file = fopen((const char*)file_name_path,"rb"))){
+                  printf("open file error\n");
+                  return;
+          }
+
+#if 0
+          buffer_size = fread(buffer,1,sizeof(char)*BUFFER_SIZE,file);
+          if(buffer_size > 0){
+                post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),FILE_UPLOAD
+                           ,buffer,buffer_size,GetDstNode());
+
+          }
+#endif
+
+          while((buffer_size = fread(buffer,1,sizeof(char)*BUFFER_SIZE,file)) > 0){
+                  //TODO:增加中断变量,信号量控制,记录文件读取位置
+                  //大文件传送测试
+                  post(wDisInsID,FILE_UPLOAD,buffer,buffer_size,m_dwdstNode);
+                  OspSemTake(m_sem);
+                  if(CancleFlag){
+                          OspSemGive(m_sem);
+                          break;
+                  }
+                  OspSemGive(m_sem);
+          }
+          fclose(file);
+
+}
+
+
+
+
 
 void CCInstance::MsgProcessInit(){
 
 #if 1
         RegMsgProFun(MAKEESTATE(IDLE_STATE,CLIENT_ENTRY),&CCInstance::ClientEntry);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_IN_ACK),&CCInstance::SignInAck);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,SIGN_OUT_CMD),&CCInstance::SignOutCmd);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,SIGN_OUT_ACK),&CCInstance::SignOutAck);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_NAME_SEND_CMD),&CCInstance::FileNameSendCmd);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_NAME_ACK),&CCInstance::FileNameAck);
 #endif
 }
 
@@ -121,7 +246,7 @@ void CCInstance::NodeChainEnd(){
 
 bool CCInstance::RegMsgProFun(u32 EventState,MsgProcess c_MsgProcess){
 
-        tCmdNode *Node,*NewNode;
+        tCmdNode *Node,*NewNode,*LNode;
 
         Node = CmdChain;
 
@@ -134,7 +259,7 @@ bool CCInstance::RegMsgProFun(u32 EventState,MsgProcess c_MsgProcess){
         NewNode->c_MsgProcess = c_MsgProcess;
 
         if(!CmdChain){
-                CmdChain = NewNode;
+                CmdChain= NewNode;
                 OspLog(SYS_LOG_LEVEL,"cmd chain init \n");
                 return true;
         }
@@ -145,10 +270,11 @@ bool CCInstance::RegMsgProFun(u32 EventState,MsgProcess c_MsgProcess){
                         printf("[RegMsgProFun] node already in \n");
                         return false;
                 }
+                LNode = Node;
                 Node = Node->next;
         }
-        Node = NewNode;
-        Node->next = NULL;
+        LNode->next = NewNode;
+        return true;
 }
 
 bool CCInstance::FindProcess(u32 EventState,MsgProcess*c_MsgProcess){

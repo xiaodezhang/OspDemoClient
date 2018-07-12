@@ -61,11 +61,19 @@ public:
         }
         u32 GetDstNode();
         void FileSendCmd2Client();
-        void ClientEntry(CMessage*);
         void MsgProcessInit();
         void NodeChainEnd();
         bool RegMsgProFun(u32,MsgProcess);
         bool FindProcess(u32,MsgProcess*);
+
+
+        //注册处理函数
+        void ClientEntry(CMessage*const);
+        void SignInAck(CMessage*const);
+        void SignOutCmd(CMessage*const);
+        void SignOutAck(CMessage*const);
+        void FileNameSendCmd(CMessage*const);
+        void FileNameAck(CMessage*const);
 };
 
 typedef zTemplate<CCInstance,MAX_INS_NUM,CAppNoData,MAX_ALIAS_LENGTH> CCApp;
