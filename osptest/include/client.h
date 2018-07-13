@@ -7,7 +7,7 @@
 #define OSP_AGENT_CLIENT_PORT         20001
 #define EV_CLIENT_TEST_BGN           (u16)0x1111
 #define SERVER_CONNECT_TEST          (EV_CLIENT_TEST_BGN+1)
-#define CLIENT_ENTRY                (EV_CLIENT_TEST_BGN+2)
+#define CLIENT_ENTRY                 (EV_CLIENT_TEST_BGN+2)
 #define CLIENT_APP_ID                (u16)3
 #define MAX_MSG_WAITING              (u32)512
 #define CLIENT_APP_PRI               (u8)80
@@ -17,6 +17,9 @@
 
 #define BUFFER_SIZE                   MAX_MSG_LEN
 #define MAX_FILE_NAME_LENGTH         200
+#define CLIENT_INSTANCE_NUM          1
+
+#define CLIENT_INSTANCE_ID           1
 
 
 extern void test_file_send();
@@ -40,16 +43,20 @@ typedef struct tagCmdNode{
 
 
         u32         m_dwdstNode;
-        u32         wDisInsID;
+        u32         m_dwDisInsID;
         SEMHANDLE   m_sem;
         u8          file_name_path[MAX_FILE_NAME_LENGTH];
 
-        u8          buffer[BUFFER_SIZE];
+        s8          buffer[BUFFER_SIZE];
 private:
         void InstanceEntry(CMessage *const);
-        tCmdNode *CmdChain = NULL;
+        void DaemonInstanceEntry(CMessage *const,CApp*);
+        tCmdNode *m_tCmdChain;
+        tCmdNode *m_tCmdDaemonChain;
 public:
-        CCInstance(): m_dwdstNode(0),wDisInsID(0){
+        CCInstance(): m_dwdstNode(0),m_dwDisInsID(0){
+                m_tCmdChain = NULL;
+                m_tCmdDaemonChain = NULL;
                 OspSemBCreate(&m_sem);
                 memset(file_name_path,0,sizeof(u8)*MAX_FILE_NAME_LENGTH);
                 memset(buffer,0,sizeof(u8)*BUFFER_SIZE);
@@ -63,8 +70,8 @@ public:
         void FileSendCmd2Client();
         void MsgProcessInit();
         void NodeChainEnd();
-        bool RegMsgProFun(u32,MsgProcess);
-        bool FindProcess(u32,MsgProcess*);
+        bool RegMsgProFun(u32,MsgProcess,tCmdNode**);
+        bool FindProcess(u32,MsgProcess*,tCmdNode*);
 
 
         //注册处理函数
@@ -76,4 +83,4 @@ public:
         void FileNameAck(CMessage*const);
 };
 
-typedef zTemplate<CCInstance,MAX_INS_NUM,CAppNoData,MAX_ALIAS_LENGTH> CCApp;
+typedef zTemplate<CCInstance,CLIENT_INSTANCE_NUM,CAppNoData,MAX_ALIAS_LENGTH> CCApp;
