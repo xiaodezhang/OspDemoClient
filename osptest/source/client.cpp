@@ -2,13 +2,19 @@
 #include"client.h"
 
 CCApp g_cCApp;
-static s8 chCancleFlag = 0;
+static u32 g_dwdstNode;
 
 #define MAKEESTATE(state,event) ((u32)(event<< 4 +state))
 #define SERVER_IP                ("172.16.236.241")
 #define SERVER_PORT              (20000)
 
 API void SendSignInCmd(){
+
+        ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::DAEMON),SIGN_IN_CMD);
+}
+
+
+API void SendClientEntryCmd(){
 
         ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::DAEMON),CLIENT_ENTRY);
 }
@@ -18,7 +24,36 @@ API void SendSignOutCmd(){
         ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::DAEMON),SIGN_OUT_CMD);
 }
 
+API void SendFileUploadCmd(){
 
+        s8 file_name[] = "test_file_name";
+        ::OspPost(MAKEIID(CLIENT_APP_ID,CLIENT_INSTANCE_ID),FILE_UPLOAD_CMD,
+                        file_name,strlen(file_name)+1);
+}
+
+void CCInstance::FileUploadCmd(CMessage*const pMsg){
+
+          if(!pMsg->content || pMsg->length <= 0){
+                   OspLog(LOG_LVL_ERROR,"[InstanceEntry] pMsg is NULL\n");
+                   OspPrintf(1,0,"[InstanceEntry] pMsg is NULL\n");
+                   printf("pmsg is null\n");
+                   return;
+          }
+
+          strcpy((LPSTR)file_name_path,(LPCSTR)pMsg->content);
+          if(!(file = fopen((LPCSTR)file_name_path,"rb"))){
+                  OspLog(LOG_LVL_ERROR,"[SendFileUpload]open file failed\n");
+                  printf("[SendFileUpload]open file failed\n");
+                  return;
+          }
+
+          if(OSP_OK != post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),FILE_NAME_SEND
+                         ,pMsg->content,pMsg->length,g_dwdstNode)){
+                  OspLog(LOG_LVL_ERROR,"[FileUploadCmd] post error\n");
+                  return;
+          }
+          NextState(RUNNING_STATE);
+}
 
 int main(){
 
@@ -43,8 +78,10 @@ int main(){
         }
 
 #ifdef _LINUX_
+        OspRegCommand("ClientEntry",(void*)SendClientEntryCmd,"");
         OspRegCommand("SignIn",(void*)SendSignInCmd,"");
         OspRegCommand("SignOut",(void*)SendSignOutCmd,"");
+        OspRegCommand("FileUpload",(void*)SendFileUploadCmd,"");
 #endif
         while(1)
                 OspDelay(100);
@@ -62,36 +99,6 @@ void test_file_send(){
                         file_name,strlen(file_name)+1);
 }
 
-u32 CCInstance::GetDstNode(){
-
-        return m_dwdstNode;
-}
-void CCInstance::FileSendCmd2Client(){
-
-
-#if 0
-    const char file_name_path[] = "test_file_name";
-    FILE *file;
-    size_t buffer_size;
-
-    if(!(file = fopen(file_name_path,"rb"))){
-          printf("open file error\n");
-          return;
-    }
-    buffer_size = fread(buffer,1,sizeof(char)*BUFFER_SIZE,file);
-    post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),FILE_UPLOAD
-                                      ,buffer,buffer_size,GetDstNode());
-
-    while((buffer_size = fread(buffer,1,sizeof(char)*BUFFER_SIZE,file)) > 0){
-          //TODO:Instance实例选择需要修改,增加中断变量
-        post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),FILE_UPLOAD
-                        ,buffer,buffer_size,m_dwdstNode);
-    }
-#endif
-}
-
-#if 1
-
 typedef struct tagCmdNode{
         u32         EventState;
         CCInstance::MsgProcess  c_MsgProcess;
@@ -101,20 +108,42 @@ typedef struct tagCmdNode{
 
 void CCInstance::ClientEntry(CMessage *const pMsg){
 
-          m_dwdstNode = OspConnectTcpNode(inet_addr(SERVER_IP),SERVER_PORT,10,3);
-          if(INVALID_NODE == m_dwdstNode){
+          if(m_bConnectedFlag){
+                  OspLog(SYS_LOG_LEVEL,"connected already\n");
+                  return;
+          }
+          g_dwdstNode = OspConnectTcpNode(inet_addr(SERVER_IP),SERVER_PORT,10,3);
+          if(INVALID_NODE == g_dwdstNode){
 //                SetTimer(DISCONNET_TIMER, osp_test_interval);
 //                OspLog(LOG_LVL_KEY, "Connect extern node failed. exit.\n");
 //                OspTaskResume(g_hMainTask);
                   return;
           }
+          m_bConnectedFlag = true;
+}
+
+void CCInstance::SignInCmd(CMessage *const pMsg){
+
+          if(!m_bConnectedFlag){
+                  OspLog(LOG_LVL_ERROR,"[SignInCmd]not connected\n");
+          }
+          if(m_bSignFlag){
+                  OspLog(SYS_LOG_LEVEL,"sign in already\n");
+                  return;
+          }
           TSinInfo tSinInfo;
           strcpy(tSinInfo.g_Username,"admin");
           strcpy(tSinInfo.g_Passwd,"admin");
-          post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON),SIGN_IN,(const void *)&tSinInfo,(u16)sizeof(tSinInfo),m_dwdstNode);
+          if(post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON),SIGN_IN
+                      ,(const void *)&tSinInfo,(u16)sizeof(tSinInfo),g_dwdstNode) != OSP_OK){
+                  OspLog(LOG_LVL_ERROR,"[SignInCmd] post error\n");
+                  return;
+          }
+          m_bSignFlag = true;
 }
 
 void CCInstance::SignInAck(CMessage * const pMsg){
+
           if(pMsg->length <= 0 || !pMsg->content){
                   OspLog(SYS_LOG_LEVEL,"sign in failed\n");
                   OspPrintf(1,1,"sign in failed\n");
@@ -134,71 +163,31 @@ void CCInstance::SignInAck(CMessage * const pMsg){
           OspLog(SYS_LOG_LEVEL,"sign in successfully\n");
           OspPrintf(1,1,"sign in successfully\n");
           printf("sign in successfully\n");
-
-
-#if 0
-
-          //测试文件上传
-          FILE* file;
-          size_t buffer_size;
-
-          if(!(file = fopen(file_name_path,"rb"))){
-                  printf("open file error\n");
-                  break;
-          }
-
-          buffer_size = fread(buffer,1,sizeof(char)*BUFFER_SIZE,file);
-          if(buffer_size > 0){
-                post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),FILE_UPLOAD
-                           ,buffer,buffer_size,GetDstNode());
-
-          }
-          //
-          while((buffer_size = fread(buffer,1,sizeof(char)*BUFFER_SIZE,file)) > 0){
-                  //TODO:Instance实例选择需要修改,增加中断变量
-                post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),FILE_UPLOAD
-                                ,buffer,buffer_size,m_dwdstNode);
-          }
-          fclose(file);
-#endif
-
-
 }
 
 void CCInstance::SignOutCmd(CMessage * const pMsg){
-          post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON),SIGN_OUT,NULL,0,m_dwdstNode);
+
+          if(OSP_OK != post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON)
+                                  ,SIGN_OUT,NULL,0,g_dwdstNode)){
+                  OspLog(LOG_LVL_ERROR,"[SignOutCmd] post error\n");
+                  return;
+          }
           OspLog(SYS_LOG_LEVEL,"get sign out cmd,send to server\n");
           OspPrintf(1,1,"get sign out cmd,send to server\n");
 
 }
+
 void CCInstance::SignOutAck(CMessage * const pMsg){
           NextState(IDLE_STATE);
           OspLog(SYS_LOG_LEVEL,"sign out\n");
           OspPrintf(1,1,"sign out\n");
-printf("get sign out ack\n");
+          printf("get sign out ack\n");
 
 }
-void CCInstance::FileNameSendCmd(CMessage * const pMsg){
 
-        printf("file name send cmd fun\n");
-
-          if(!pMsg->content || pMsg->length <= 0){
-                   OspLog(LOG_LVL_ERROR,"[InstanceEntry] pMsg is NULL\n");
-                   OspPrintf(1,0,"[InstanceEntry] pMsg is NULL\n");
-                   printf("pmsg is null\n");
-                   return;
-          }
-          strcpy((LPSTR)file_name_path,(LPCSTR)pMsg->content);
-          post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),FILE_NAME_SEND
-                         ,pMsg->content,pMsg->length,GetDstNode());
-
-          printf("dstnode:%ld\n",m_dwdstNode);
-
-}
 void CCInstance::FileNameAck(CMessage * const pMsg){
-          FILE* file;
-          size_t buffer_size;
 
+          size_t buffer_size;
 
           m_dwDisInsID = pMsg->srcid;
           if(!(file = fopen((LPCSTR)file_name_path,"rb"))){
@@ -206,41 +195,66 @@ void CCInstance::FileNameAck(CMessage * const pMsg){
                   return;
           }
 
-#if 0
           buffer_size = fread(buffer,1,sizeof(char)*BUFFER_SIZE,file);
           if(buffer_size > 0){
-                post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),FILE_UPLOAD
-                           ,buffer,buffer_size,GetDstNode());
+                if(OSP_OK != post(pMsg->srcid,FILE_UPLOAD
+                           ,buffer,buffer_size,g_dwdstNode)){
+                    OspLog(LOG_LVL_ERROR,"[FileNameAck] post error\n");
+                }
 
           }
-#endif
 
-          while((buffer_size = fread(buffer,1,sizeof(s8)*BUFFER_SIZE,file)) > 0){
-                  //TODO:增加中断变量,信号量控制,记录文件读取位置
-                  //大文件传送测试
-                  post(m_dwDisInsID,FILE_UPLOAD,buffer,buffer_size,m_dwdstNode);
-                  OspSemTake(m_sem);
-                  if(chCancleFlag){
-                          OspSemGive(m_sem);
-                          break;
-                  }
-                  OspSemGive(m_sem);
-          }
-          fclose(file);
+}
 
+void CCInstance::FileUploadAck(CMessage* const pMsg){
+
+        size_t buffer_size;
+
+        buffer_size = fread(buffer,1,sizeof(char*)*BUFFER_SIZE,file);
+        if(ferror(file)){
+                fclose(file);
+                OspLog(LOG_LVL_ERROR,"[FileUploadAck] read-file error\n");
+                return;
+        }
+        if(feof(file)){
+             if(OSP_OK != post(pMsg->srcid,FILE_FINISH
+                           ,buffer,buffer_size,g_dwdstNode)){
+                  OspLog(LOG_LVL_ERROR,"[FileUploadAck]FILE_FINISH post error\n");
+                  return;
+             }
+   
+        }else{
+             if(OSP_OK != post(pMsg->srcid,FILE_UPLOAD
+                           ,buffer,buffer_size,g_dwdstNode)){
+                  OspLog(LOG_LVL_ERROR,"[FileUploadAck]FILE_UPLOAD post error\n");
+                  return;
+             }
+
+        }
+}
+
+void CCInstance::FileFinishAck(CMessage* const pMsg){
+        
+        OspLog(SYS_LOG_LEVEL,"file upload finish\n");
+        NextState(IDLE_STATE);
+        fclose(file);
 }
 
 void CCInstance::MsgProcessInit(){
 
-#if 1
+        //Daemon Instance
         RegMsgProFun(MAKEESTATE(IDLE_STATE,CLIENT_ENTRY),&CCInstance::ClientEntry,&m_tCmdDaemonChain);
-
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_IN_CMD),&CCInstance::SignInCmd,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_IN_ACK),&CCInstance::SignInAck,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,SIGN_OUT_CMD),&CCInstance::SignOutCmd,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,SIGN_OUT_ACK),&CCInstance::SignOutAck,&m_tCmdDaemonChain);
-        RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_NAME_SEND_CMD),&CCInstance::FileNameSendCmd,&m_tCmdChain);
+
+
+        //common Instance
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_UPLOAD_CMD),&CCInstance::FileUploadCmd,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_NAME_ACK),&CCInstance::FileNameAck,&m_tCmdChain);
-#endif
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_UPLOAD_ACK),&CCInstance::FileUploadAck,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_FINISH_ACK),&CCInstance::FileFinishAck,&m_tCmdChain);
 }
 
 void CCInstance::NodeChainEnd(){
@@ -287,6 +301,7 @@ bool CCInstance::RegMsgProFun(u32 EventState,MsgProcess c_MsgProcess,tCmdNode** 
                 Node = Node->next;
         }
         LNode->next = NewNode;
+
         return true;
 }
 
@@ -301,24 +316,20 @@ bool CCInstance::FindProcess(u32 EventState,MsgProcess* c_MsgProcess,tCmdNode* t
                 return false;
         }
         while(Node){
-#if 0
-                printf("node eventstate:%ld\n",Node->EventState);
-                printf("eventstate:%ld\n",EventState);
-#endif
+
                 if(Node->EventState == EventState){
                         *c_MsgProcess = Node->c_MsgProcess;
                         return true;
                 }
                 Node = Node->next;
         }
+
         return false;
 }
 
-#endif
 
 void CCInstance::InstanceEntry(CMessage * const pMsg){
 
-//        printf("client instance entry\n");
         if(NULL == pMsg){
                 OspLog(LOG_LVL_ERROR,"[InstanceEntry] pMsg is NULL\n");
         }
@@ -329,7 +340,6 @@ void CCInstance::InstanceEntry(CMessage * const pMsg){
 
 
         if(FindProcess(MAKEESTATE(curState,curEvent),&c_MsgProcess,m_tCmdChain)){
-//                printf("find the EState\n");
                 (this->*c_MsgProcess)(pMsg);
         }else{
                 OspLog(LOG_LVL_ERROR,"[InstanceEntry] can not find the EState\n");
@@ -350,7 +360,6 @@ void CCInstance::DaemonInstanceEntry(CMessage *const pMsg,CApp *pCApp){
 
 
         if(FindProcess(MAKEESTATE(curState,curEvent),&c_MsgProcess,m_tCmdDaemonChain)){
-//                printf("find the EState\n");
                 (this->*c_MsgProcess)(pMsg);
         }else{
                 OspLog(LOG_LVL_ERROR,"[InstanceEntry] can not find the EState\n");

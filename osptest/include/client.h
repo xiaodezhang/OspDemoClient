@@ -15,7 +15,11 @@
 #define SIGN_STATUS_OUT               0
 #define AUTHORIZATION_NAME_SIZE       20
 
-#define BUFFER_SIZE                   MAX_MSG_LEN
+#if 1
+#define BUFFER_SIZE                   (MAX_MSG_LEN >> 1)
+#else
+#define BUFFER_SIZE                   1
+#endif
 #define MAX_FILE_NAME_LENGTH         200
 #define CLIENT_INSTANCE_NUM          1
 
@@ -42,7 +46,6 @@ typedef struct tagCmdNode{
 }tCmdNode;
 
 
-        u32         m_dwdstNode;
         u32         m_dwDisInsID;
         SEMHANDLE   m_sem;
         u8          file_name_path[MAX_FILE_NAME_LENGTH];
@@ -53,8 +56,12 @@ private:
         void DaemonInstanceEntry(CMessage *const,CApp*);
         tCmdNode *m_tCmdChain;
         tCmdNode *m_tCmdDaemonChain;
+        FILE *file;
+        bool m_bSignFlag;
+        bool m_bConnectedFlag;
 public:
-        CCInstance(): m_dwdstNode(0),m_dwDisInsID(0){
+        CCInstance(): m_dwDisInsID(0),file(NULL)
+                     ,m_bSignFlag(false),m_bConnectedFlag(false){
                 m_tCmdChain = NULL;
                 m_tCmdDaemonChain = NULL;
                 OspSemBCreate(&m_sem);
@@ -66,7 +73,6 @@ public:
                 OspSemDelete(m_sem);
                 NodeChainEnd();
         }
-        u32 GetDstNode();
         void FileSendCmd2Client();
         void MsgProcessInit();
         void NodeChainEnd();
@@ -75,12 +81,17 @@ public:
 
 
         //注册处理函数
-        void ClientEntry(CMessage*const);
-        void SignInAck(CMessage*const);
-        void SignOutCmd(CMessage*const);
-        void SignOutAck(CMessage*const);
-        void FileNameSendCmd(CMessage*const);
-        void FileNameAck(CMessage*const);
+        void ClientEntry(CMessage* const);
+        void SignInCmd(CMessage* const);
+        void SignInAck(CMessage* const);
+        void SignOutCmd(CMessage* const);
+        void SignOutAck(CMessage* const);
+        void FileNameAck(CMessage* const);
+
+        void FileUploadCmd(CMessage* const);
+
+        void FileUploadAck(CMessage* const);
+        void FileFinishAck(CMessage* const);
 };
 
 typedef zTemplate<CCInstance,CLIENT_INSTANCE_NUM,CAppNoData,MAX_ALIAS_LENGTH> CCApp;
