@@ -50,8 +50,10 @@ const u8 MAX_ALIAS_LENGTH = 20;
 #define FILE_UPLOAD_ACK              (EV_CLIENT_TEST_BGN+12)
 #define FILE_FINISH                  (EV_CLIENT_TEST_BGN+13)
 #define FILE_FINISH_ACK              (EV_CLIENT_TEST_BGN+14)
+#define FILE_CANCEL                  (EV_CLIENT_TEST_BGN+15)
+#define FILE_REMOVE                  (EV_CLIENT_TEST_BGN+16)
 
-#define SIGN_IN_CMD                  (EV_CLIENT_TEST_BGN+15)
+#define SIGN_IN_CMD                  (EV_CLIENT_TEST_BGN+17)
 
 
 

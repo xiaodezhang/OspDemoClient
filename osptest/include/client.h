@@ -16,9 +16,9 @@
 #define AUTHORIZATION_NAME_SIZE       20
 
 #if 1
-#define BUFFER_SIZE                   (MAX_MSG_LEN >> 1)
+#define BUFFER_SIZE                   (u16)(MAX_MSG_LEN >> 1)
 #else
-#define BUFFER_SIZE                   1
+#define BUFFER_SIZE                   (u16)1
 #endif
 #define MAX_FILE_NAME_LENGTH         200
 #define CLIENT_INSTANCE_NUM          1
@@ -26,28 +26,41 @@
 #define CLIENT_INSTANCE_ID           1
 
 
-extern void test_file_send();
+#define SEND_REMOVE                    (EV_CLIENT_TEST_BGN+17)
+#define SEND_CANCEL                    (EV_CLIENT_TEST_BGN+18)
+#define SEND_REMOVE_CMD                (EV_CLIENT_TEST_BGN+19)
+#define SEND_CANCEL_CMD                (EV_CLIENT_TEST_BGN+20)
+
+
 typedef struct tagSinInfo{
         s8 g_Username[AUTHORIZATION_NAME_SIZE];
         s8 g_Passwd[AUTHORIZATION_NAME_SIZE];
 }TSinInfo;
 
+typedef enum tagEM_FILE_STATUS{
+                GO_ON_SEND       = 0,
+                RECEIVE_CANCEL   = 1,
+                RECEIVE_REMOVE   = 2,
+                CANCELED         = 3,
+                REMOVED          = 4,
+                FINISHED         = 5
+}EM_FILE_STATUS;
+
 
 class CCInstance : public CInstance{
 
 public:
-typedef void (CCInstance::*MsgProcess)(CMessage *const pMsg);
+        typedef void (CCInstance::*MsgProcess)(CMessage *const pMsg);
 private:
 
-typedef struct tagCmdNode{
-        u32         EventState;
-        CCInstance::MsgProcess  c_MsgProcess;
-        struct      tagCmdNode *next;
-}tCmdNode;
+        typedef struct tagCmdNode{
+                u32         EventState;
+                CCInstance::MsgProcess  c_MsgProcess;
+                struct      tagCmdNode *next;
+        }tCmdNode;
 
 
         u32         m_dwDisInsID;
-        SEMHANDLE   m_sem;
         u8          file_name_path[MAX_FILE_NAME_LENGTH];
 
         s8          buffer[BUFFER_SIZE];
@@ -61,19 +74,15 @@ private:
         bool m_bConnectedFlag;
 public:
         CCInstance(): m_dwDisInsID(0),file(NULL)
-                     ,m_bSignFlag(false),m_bConnectedFlag(false){
-                m_tCmdChain = NULL;
-                m_tCmdDaemonChain = NULL;
-                OspSemBCreate(&m_sem);
+                     ,m_bSignFlag(false),m_bConnectedFlag(false)
+                     ,m_tCmdChain(NULL),m_tCmdDaemonChain(NULL){
                 memset(file_name_path,0,sizeof(u8)*MAX_FILE_NAME_LENGTH);
                 memset(buffer,0,sizeof(u8)*BUFFER_SIZE);
                 MsgProcessInit();
         }
         ~CCInstance(){
-                OspSemDelete(m_sem);
                 NodeChainEnd();
         }
-        void FileSendCmd2Client();
         void MsgProcessInit();
         void NodeChainEnd();
         bool RegMsgProFun(u32,MsgProcess,tCmdNode**);
@@ -92,6 +101,9 @@ public:
 
         void FileUploadAck(CMessage* const);
         void FileFinishAck(CMessage* const);
+
+        void SendRemoveCmd(CMessage* const);
+        void SendCancelCmd(CMessage* const);
 };
 
 typedef zTemplate<CCInstance,CLIENT_INSTANCE_NUM,CAppNoData,MAX_ALIAS_LENGTH> CCApp;
