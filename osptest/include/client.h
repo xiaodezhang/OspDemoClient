@@ -64,6 +64,10 @@ private:
         u8          file_name_path[MAX_FILE_NAME_LENGTH];
 
         s8          buffer[BUFFER_SIZE];
+        u32         m_wFileSize;           //因为fseek返回值为int，实际最大值为2G,fopen也有这样的限制，设置
+                                           //_FILE_OFFSET_BITS == 64或者使用-D_FILE_OFFSET_BITS = 64可能会
+                                           //增加限制值,64位系统不存在这样的问题。
+        u32         m_wUploadFileSize;
 private:
         void InstanceEntry(CMessage *const);
         void DaemonInstanceEntry(CMessage *const,CApp*);
@@ -73,9 +77,10 @@ private:
         bool m_bSignFlag;
         bool m_bConnectedFlag;
 public:
-        CCInstance(): m_dwDisInsID(0),file(NULL)
-                     ,m_bSignFlag(false),m_bConnectedFlag(false)
-                     ,m_tCmdChain(NULL),m_tCmdDaemonChain(NULL){
+        CCInstance(): m_dwDisInsID(0),file(NULL),m_wFileSize(0)
+                     ,m_wUploadFileSize(0),m_bSignFlag(false)
+                      ,m_bConnectedFlag(false),m_tCmdChain(NULL)
+                      ,m_tCmdDaemonChain(NULL){
                 memset(file_name_path,0,sizeof(u8)*MAX_FILE_NAME_LENGTH);
                 memset(buffer,0,sizeof(u8)*BUFFER_SIZE);
                 MsgProcessInit();
@@ -102,8 +107,8 @@ public:
         void FileUploadAck(CMessage* const);
         void FileFinishAck(CMessage* const);
 
-        void SendRemoveCmd(CMessage* const);
-        void SendCancelCmd(CMessage* const);
+        void RemoveCmd(CMessage* const);
+        void CancelCmd(CMessage* const);
 };
 
 typedef zTemplate<CCInstance,CLIENT_INSTANCE_NUM,CAppNoData,MAX_ALIAS_LENGTH> CCApp;

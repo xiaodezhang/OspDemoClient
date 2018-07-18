@@ -8,6 +8,18 @@ static u32 g_dwdstNode;
 #define SERVER_IP                ("172.16.236.241")
 #define SERVER_PORT              (20000)
 
+API void SendCancelCmd(){
+
+        ::OspPost(MAKEIID(CLIENT_APP_ID,CLIENT_INSTANCE_ID),SEND_CANCEL_CMD,
+                        NULL,0);
+}
+
+API void SendRemoveCmd(){
+
+        ::OspPost(MAKEIID(CLIENT_APP_ID,CLIENT_INSTANCE_ID),SEND_REMOVE_CMD,
+                        NULL,0);
+}
+
 API void SendSignInCmd(){
 
         TSinInfo tSinInfo;
@@ -17,6 +29,7 @@ API void SendSignInCmd(){
         ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::DAEMON),SIGN_IN_CMD,
                         &tSinInfo,sizeof(tSinInfo));
 }
+
 
 
 API void SendClientEntryCmd(){
@@ -31,7 +44,7 @@ API void SendSignOutCmd(){
 
 API void SendFileUploadCmd(){
 
-        s8 file_name[] = "test_file_name";
+        s8 file_name[] = "mydoc.7z";
         ::OspPost(MAKEIID(CLIENT_APP_ID,CLIENT_INSTANCE_ID),FILE_UPLOAD_CMD,
                         file_name,strlen(file_name)+1);
 }
@@ -51,6 +64,18 @@ void CCInstance::FileUploadCmd(CMessage*const pMsg){
                   printf("[SendFileUpload]open file failed\n");
                   return;
           }
+          //获取文件大小，根据标准c，二进制流SEEK_END没有严格得到支持，ftell返回值为long int，
+          //32位系统大小限制在2G
+          if(fseek(file,0L,SEEK_END) != 0){
+                   OspLog(LOG_LVL_ERROR,"[InstanceEntry] file fseeek error\n");
+                   return;
+          }
+          if(-1L == (m_wFileSize = ftell(file))){
+                   OspLog(LOG_LVL_ERROR,"[InstanceEntry] file ftell error\n");
+                   perror("file ftell error\n");
+                   return;
+          }
+          rewind(file);
 
           if(OSP_OK != post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),FILE_NAME_SEND
                          ,pMsg->content,pMsg->length,g_dwdstNode)){
@@ -87,6 +112,8 @@ int main(){
         OspRegCommand("SignIn",(void*)SendSignInCmd,"");
         OspRegCommand("SignOut",(void*)SendSignOutCmd,"");
         OspRegCommand("FileUpload",(void*)SendFileUploadCmd,"");
+        OspRegCommand("Cancel",(void*)SendCancelCmd,"");
+        OspRegCommand("Remove",(void*)SendRemoveCmd,"");
 #endif
         while(1)
                 OspDelay(100);
@@ -150,7 +177,7 @@ void CCInstance::SignInAck(CMessage * const pMsg){
                   //TODO:向GUI发送重新登陆提示
           }
           m_bSignFlag = true;
-          NextState(RUNNING_STATE);
+//          NextState(RUNNING_STATE);
           //TODO,应该需要增加其他信息，目前是无法定位的，也有可能log函数自带定位
           //，需要确认
           OspLog(SYS_LOG_LEVEL,"sign in successfully\n");
@@ -160,6 +187,11 @@ void CCInstance::SignInAck(CMessage * const pMsg){
 
 void CCInstance::SignOutCmd(CMessage * const pMsg){
 
+
+          if(!m_bSignFlag){
+                  OspLog(SYS_LOG_LEVEL,"haven't sign in\n");
+                  return;
+          }
           if(OSP_OK != post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON)
                                   ,SIGN_OUT,NULL,0,g_dwdstNode)){
                   OspLog(LOG_LVL_ERROR,"[SignOutCmd] post error\n");
@@ -172,7 +204,7 @@ void CCInstance::SignOutCmd(CMessage * const pMsg){
 
 void CCInstance::SignOutAck(CMessage * const pMsg){
 
-          NextState(IDLE_STATE);
+//          NextState(IDLE_STATE);
           m_bSignFlag = false;
           OspLog(SYS_LOG_LEVEL,"sign out\n");
           printf("get sign out ack\n");
@@ -210,8 +242,9 @@ void CCInstance::FileNameAck(CMessage * const pMsg){
                     OspLog(LOG_LVL_ERROR,"[FileNameAck]FILE_UPLOAD post error\n");
                     return;
                }
-
           }
+          m_wUploadFileSize += buffer_size;
+          printf("upload file rate:%f\n",(float)m_wUploadFileSize/(float)m_wFileSize);
 }
 
 void CCInstance::FileUploadAck(CMessage* const pMsg){
@@ -241,17 +274,16 @@ void CCInstance::FileUploadAck(CMessage* const pMsg){
                      if(OSP_OK != post(pMsg->srcid,FILE_FINISH
                                    ,buffer,buffer_size,g_dwdstNode)){
                           OspLog(LOG_LVL_ERROR,"[FileUploadAck]FILE_FINISH post error\n");
-                          return;
                      }
            
-                }else{
+                }else{//继续发送
                      if(OSP_OK != post(pMsg->srcid,FILE_UPLOAD
                                    ,buffer,buffer_size,g_dwdstNode)){
                           OspLog(LOG_LVL_ERROR,"[FileUploadAck]FILE_UPLOAD post error\n");
-                          return;
                      }
-
                 }
+                m_wUploadFileSize += buffer_size;
+                printf("upload file rate:%f\n",(float)m_wUploadFileSize/(float)m_wFileSize);
         }else if(emFileStatus == RECEIVE_CANCEL){//暂停
                 if(OSP_OK != post(pMsg->srcid,FILE_CANCEL
                               ,NULL,0,g_dwdstNode)){
@@ -280,6 +312,8 @@ void CCInstance::FileFinishAck(CMessage* const pMsg){
                 OspLog(LOG_LVL_ERROR,"[FileRemove]file close failed\n");
         }
         NextState(IDLE_STATE);
+        m_wFileSize = 0;
+        m_wUploadFileSize = 0;
 }
 
 void CCInstance::MsgProcessInit(){
@@ -288,17 +322,21 @@ void CCInstance::MsgProcessInit(){
         RegMsgProFun(MAKEESTATE(IDLE_STATE,CLIENT_ENTRY),&CCInstance::ClientEntry,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_IN_CMD),&CCInstance::SignInCmd,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_IN_ACK),&CCInstance::SignInAck,&m_tCmdDaemonChain);
+#if 0
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,SIGN_OUT_CMD),&CCInstance::SignOutCmd,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,SIGN_OUT_ACK),&CCInstance::SignOutAck,&m_tCmdDaemonChain);
-
+#else
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_OUT_CMD),&CCInstance::SignOutCmd,&m_tCmdDaemonChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_OUT_ACK),&CCInstance::SignOutAck,&m_tCmdDaemonChain);
+#endif
 
         //common Instance
         RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_UPLOAD_CMD),&CCInstance::FileUploadCmd,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_NAME_ACK),&CCInstance::FileNameAck,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_UPLOAD_ACK),&CCInstance::FileUploadAck,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_FINISH_ACK),&CCInstance::FileFinishAck,&m_tCmdChain);
-        RegMsgProFun(MAKEESTATE(RUNNING_STATE,SEND_REMOVE_CMD),&CCInstance::SendRemoveCmd,&m_tCmdChain);
-        RegMsgProFun(MAKEESTATE(RUNNING_STATE,SEND_CANCEL_CMD),&CCInstance::SendCancelCmd,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,SEND_REMOVE_CMD),&CCInstance::RemoveCmd,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,SEND_CANCEL_CMD),&CCInstance::CancelCmd,&m_tCmdChain);
 }
 
 void CCInstance::NodeChainEnd(){
@@ -412,20 +450,20 @@ void CCInstance::DaemonInstanceEntry(CMessage *const pMsg,CApp *pCApp){
 
 }
 
-void CCInstance::SendRemoveCmd(CMessage* const pMsg){
+void CCInstance::RemoveCmd(CMessage* const pMsg){
 
         if(OSP_OK != post(m_dwDisInsID,SEND_REMOVE
-                       ,pMsg->content,pMsg->length,g_dwdstNode)){
-                OspLog(LOG_LVL_ERROR,"[SendRemoveCmd] post error\n");
+                       ,NULL,0,g_dwdstNode)){
+                OspLog(LOG_LVL_ERROR,"[RemoveCmd] post error\n");
                 return;
         }
 }
 
-void CCInstance::SendCancelCmd(CMessage* const pMsg){
+void CCInstance::CancelCmd(CMessage* const pMsg){
 
         if(OSP_OK != post(m_dwDisInsID,SEND_CANCEL
-                       ,pMsg->content,pMsg->length,g_dwdstNode)){
-                OspLog(LOG_LVL_ERROR,"[SendCancelCmd] post error\n");
+                       ,NULL,0,g_dwdstNode)){
+                OspLog(LOG_LVL_ERROR,"[CancelCmd] post error\n");
                 return;
         }
 
