@@ -28,8 +28,15 @@
 
 #define SEND_REMOVE                    (EV_CLIENT_TEST_BGN+17)
 #define SEND_CANCEL                    (EV_CLIENT_TEST_BGN+18)
-#define SEND_REMOVE_CMD                (EV_CLIENT_TEST_BGN+19)
-#define SEND_CANCEL_CMD                (EV_CLIENT_TEST_BGN+20)
+#define FILE_REMOVE_ACK                (EV_CLIENT_TEST_BGN+19)
+#define FILE_CANCEL_ACK                (EV_CLIENT_TEST_BGN+20)
+
+#define SEND_REMOVE_CMD                (EV_CLIENT_TEST_BGN+21)
+#define SEND_CANCEL_CMD                (EV_CLIENT_TEST_BGN+22)
+
+#define FILE_GO_ON_CMD                 (EV_CLIENT_TEST_BGN+23)
+#define FILE_GO_ON                     (EV_CLIENT_TEST_BGN+24)
+#define FILE_GO_ON_ACK                 (EV_CLIENT_TEST_BGN+25)
 
 
 typedef struct tagSinInfo{
@@ -68,6 +75,7 @@ private:
                                            //_FILE_OFFSET_BITS == 64或者使用-D_FILE_OFFSET_BITS = 64可能会
                                            //增加限制值,64位系统不存在这样的问题。
         u32         m_wUploadFileSize;
+        EM_FILE_STATUS emFileStatus;
 private:
         void InstanceEntry(CMessage *const);
         void DaemonInstanceEntry(CMessage *const,CApp*);
@@ -80,7 +88,7 @@ public:
         CCInstance(): m_dwDisInsID(0),file(NULL),m_wFileSize(0)
                      ,m_wUploadFileSize(0),m_bSignFlag(false)
                       ,m_bConnectedFlag(false),m_tCmdChain(NULL)
-                      ,m_tCmdDaemonChain(NULL){
+                      ,m_tCmdDaemonChain(NULL),emFileStatus(GO_ON_SEND){
                 memset(file_name_path,0,sizeof(u8)*MAX_FILE_NAME_LENGTH);
                 memset(buffer,0,sizeof(u8)*BUFFER_SIZE);
                 MsgProcessInit();
@@ -109,6 +117,11 @@ public:
 
         void RemoveCmd(CMessage* const);
         void CancelCmd(CMessage* const);
+        void FileCancelAck(CMessage* const);
+        void FileRemoveAck(CMessage* const);
+        void FileGoOnCmd(CMessage* const);
+        void FileGoOnAck(CMessage* const);
+
 };
 
 typedef zTemplate<CCInstance,CLIENT_INSTANCE_NUM,CAppNoData,MAX_ALIAS_LENGTH> CCApp;

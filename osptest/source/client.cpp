@@ -8,6 +8,12 @@ static u32 g_dwdstNode;
 #define SERVER_IP                ("172.16.236.241")
 #define SERVER_PORT              (20000)
 
+API void SendFileGoOnCmd(){
+
+        ::OspPost(MAKEIID(CLIENT_APP_ID,CLIENT_INSTANCE_ID),FILE_GO_ON_CMD,
+                        NULL,0);
+}
+
 API void SendCancelCmd(){
 
         ::OspPost(MAKEIID(CLIENT_APP_ID,CLIENT_INSTANCE_ID),SEND_CANCEL_CMD,
@@ -29,8 +35,6 @@ API void SendSignInCmd(){
         ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::DAEMON),SIGN_IN_CMD,
                         &tSinInfo,sizeof(tSinInfo));
 }
-
-
 
 API void SendClientEntryCmd(){
 
@@ -59,6 +63,7 @@ void CCInstance::FileUploadCmd(CMessage*const pMsg){
           }
 
           strcpy((LPSTR)file_name_path,(LPCSTR)pMsg->content);
+          
           if(!(file = fopen((LPCSTR)file_name_path,"rb"))){
                   OspLog(LOG_LVL_ERROR,"[SendFileUpload]open file failed\n");
                   printf("[SendFileUpload]open file failed\n");
@@ -114,6 +119,7 @@ int main(){
         OspRegCommand("FileUpload",(void*)SendFileUploadCmd,"");
         OspRegCommand("Cancel",(void*)SendCancelCmd,"");
         OspRegCommand("Remove",(void*)SendRemoveCmd,"");
+        OspRegCommand("GoOn",(void*)SendFileGoOnCmd,"");
 #endif
         while(1)
                 OspDelay(100);
@@ -250,14 +256,14 @@ void CCInstance::FileNameAck(CMessage * const pMsg){
 void CCInstance::FileUploadAck(CMessage* const pMsg){
 
         size_t buffer_size;
-        EM_FILE_STATUS emFileStatus;
 
         if(!pMsg->content || pMsg->length <= 0){
                  OspLog(LOG_LVL_ERROR,"[FileUploadAck] pMsg content is NULL\n");
                  return;
         }
 
-        memcpy((void*)emFileStatus,(const void*)pMsg->content,pMsg->length);
+        emFileStatus = *((EM_FILE_STATUS*)pMsg->content);
+//        memcpy((void*)emFileStatus,(const void*)pMsg->content,pMsg->length);
         if(emFileStatus == GO_ON_SEND){//继续发送
                 buffer_size = fread(buffer,1,sizeof(s8)*BUFFER_SIZE,file);
                 if(ferror(file)){
@@ -290,7 +296,7 @@ void CCInstance::FileUploadAck(CMessage* const pMsg){
                      OspLog(LOG_LVL_ERROR,"[FileUploadAck]FILE_CANCEL post error\n");
                      return;
                 }
-        }else if(emFileStatus == RECEIVE_REMOVE){//终止
+        }else if(emFileStatus == RECEIVE_REMOVE){//删除文件
                 if(OSP_OK != post(pMsg->srcid,FILE_REMOVE
                               ,NULL,0,g_dwdstNode)){
                      OspLog(LOG_LVL_ERROR,"[FileUploadAck]FILE_REMOVE post error\n");
@@ -337,6 +343,11 @@ void CCInstance::MsgProcessInit(){
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_FINISH_ACK),&CCInstance::FileFinishAck,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,SEND_REMOVE_CMD),&CCInstance::RemoveCmd,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,SEND_CANCEL_CMD),&CCInstance::CancelCmd,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_CANCEL_ACK),&CCInstance::FileCancelAck,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_REMOVE_ACK),&CCInstance::FileRemoveAck,&m_tCmdChain);
+
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_GO_ON_CMD),&CCInstance::FileGoOnCmd,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_GO_ON_ACK),&CCInstance::FileGoOnAck,&m_tCmdChain);
 }
 
 void CCInstance::NodeChainEnd(){
@@ -409,7 +420,6 @@ bool CCInstance::FindProcess(u32 EventState,MsgProcess* c_MsgProcess,tCmdNode* t
         return false;
 }
 
-
 void CCInstance::InstanceEntry(CMessage * const pMsg){
 
         if(NULL == pMsg){
@@ -447,7 +457,6 @@ void CCInstance::DaemonInstanceEntry(CMessage *const pMsg,CApp *pCApp){
                 OspLog(LOG_LVL_ERROR,"[InstanceEntry] can not find the EState\n");
                 printf("[InstanceEntry] can not find the EState\n");
         }
-
 }
 
 void CCInstance::RemoveCmd(CMessage* const pMsg){
@@ -459,6 +468,45 @@ void CCInstance::RemoveCmd(CMessage* const pMsg){
         }
 }
 
+void CCInstance::FileGoOnCmd(CMessage* const pMsg){
+
+        if(emFileStatus == FINISHED){
+                OspLog(SYS_LOG_LEVEL,"file already finished\n");
+                return;
+        }
+        //暂停或终止处理延迟，重新放入客户端消息队列
+        while(emFileStatus < CANCELED){
+                if(OSP_OK != post(MAKEIID(CLIENT_APP_ID,CLIENT_INSTANCE_ID),FILE_GO_ON_CMD
+                               ,pMsg->content,pMsg->length,g_dwdstNode)){
+                        OspLog(LOG_LVL_ERROR,"[FileGoOnCmd] post error\n");
+                        return;
+                }
+        }
+
+        if(OSP_OK != post(m_dwDisInsID,FILE_GO_ON
+                       ,pMsg->content,pMsg->length,g_dwdstNode)){
+                OspLog(LOG_LVL_ERROR,"[FileGoOnCmd]file go on post error\n");
+                return;
+        }
+}
+
+
+void CCInstance::FileGoOnAck(CMessage* const pMsg){
+
+        if(!(file = fopen((LPCSTR)file_name_path,"rb"))){
+                OspLog(LOG_LVL_ERROR,"[SendFileUpload]open file failed\n");
+                printf("[SendFileUpload]open file failed\n");
+                return;
+        }
+
+        if(fseek(file,m_wUploadFileSize,SEEK_SET) != 0){
+                 OspLog(LOG_LVL_ERROR,"[InstanceEntry] file fseeek error\n");
+                 return;
+        }
+
+        FileNameAck(pMsg);
+}
+
 void CCInstance::CancelCmd(CMessage* const pMsg){
 
         if(OSP_OK != post(m_dwDisInsID,SEND_CANCEL
@@ -466,5 +514,28 @@ void CCInstance::CancelCmd(CMessage* const pMsg){
                 OspLog(LOG_LVL_ERROR,"[CancelCmd] post error\n");
                 return;
         }
+}
 
+void CCInstance::FileCancelAck(CMessage* const pMsg){
+
+        if(fclose(file) == 0){
+                OspLog(SYS_LOG_LEVEL,"[FileCancelAck]file closed\n");
+
+        }else{
+                OspLog(LOG_LVL_ERROR,"[FileCancelAck]file close failed\n");
+        }
+        emFileStatus = CANCELED;
+}
+
+void CCInstance::FileRemoveAck(CMessage* const pMsg){
+
+        if(fclose(file) == 0){
+                OspLog(SYS_LOG_LEVEL,"[FileCancelAck]file closed\n");
+
+        }else{
+                OspLog(LOG_LVL_ERROR,"[FileCancelAck]file close failed\n");
+        }
+        emFileStatus = REMOVED;
+        m_wUploadFileSize = 0;
+        m_wFileSize = 0;
 }
