@@ -1,12 +1,14 @@
 #include"osp.h"
 #include"client.h"
 
-CCApp g_cCApp;
-static u32 g_dwdstNode;
-
-#define MAKEESTATE(state,event) ((u32)(event<< 4 +state))
+#define MAKEESTATE(state,event) ((u32)((event) << 4 + (state)))
 #define SERVER_IP                ("172.16.236.241")
 #define SERVER_PORT              (20000)
+#define CLIENT_APP_SUM           (5)
+#define APP_NUM_SIZE             (20)
+
+static u32 g_dwdstNode;
+static CCApp *g_cCApp[CLIENT_APP_SUM];
 
 API void SendFileGoOnCmd(){
 
@@ -46,11 +48,52 @@ API void SendSignOutCmd(){
         ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::DAEMON),SIGN_OUT_CMD);
 }
 
+
+API void UploadCmdSingle(const s8* filename){
+
+        u16 i,wAppId;
+        bool wPendingFlag = false;
+        CCInstance *ccIns;
+
+        for(i = 0;i < CLIENT_APP_SUM;i++){
+                ccIns = (CCInstance*)((CApp*)g_cCApp[i])->GetInstance(CLIENT_INSTANCE_ID);
+                if(!ccIns){
+                        OspLog(LOG_LVL_ERROR,"[UploadCmdSingle] can not find client instance\n");
+                        printf("[UploadCmdSingle] can not find client instance\n");
+                        return;
+                }
+                wAppId = ccIns->GetAppID();
+                if(ccIns->CurState() == CInstance::PENDING){
+                        wPendingFlag = true;
+                        break;
+                }
+        }
+        if(!wPendingFlag){
+                OspLog(LOG_LVL_ERROR,"[UploadCmdSingle] max file uploaded arrived\n");
+                return;
+        }
+        OspLog(SYS_LOG_LEVEL,"appid:%d\n",wAppId);
+        printf("appid:%d\b",wAppId);
+        ::OspPost(MAKEIID(wAppId,CLIENT_INSTANCE_ID),FILE_UPLOAD_CMD,
+                        filename,strlen(filename)+1);
+}
+
 API void SendFileUploadCmd(){
 
-        s8 file_name[] = "mydoc.7z";
-        ::OspPost(MAKEIID(CLIENT_APP_ID,CLIENT_INSTANCE_ID),FILE_UPLOAD_CMD,
-                        file_name,strlen(file_name)+1);
+        UploadCmdSingle("mydoc.7z");
+}
+
+API void MultSendFileUploadCmd(){
+
+#if 0
+        UploadCmdSingle("mydoc.7z");
+        UploadCmdSingle("test_file_name");
+#else
+        ::OspPost(MAKEIID(3,CLIENT_INSTANCE_ID),FILE_UPLOAD_CMD,
+                        "mydoc.7z",strlen("mydoc.7z")+1);
+       ::OspPost(MAKEIID(4,CLIENT_INSTANCE_ID),FILE_UPLOAD_CMD,
+                        "mydoc.7z",strlen("mydoc.7z")+1);
+#endif
 }
 
 void CCInstance::FileUploadCmd(CMessage*const pMsg){
@@ -97,17 +140,37 @@ int main(){
 #else
         int ret = OspInit(TRUE,2501,"LinuxOspClient");
 #endif
+        s16 i,j;
+        s8 chAppNum[APP_NUM_SIZE];
 
         if(!ret){
                 OspPrintf(1,0,"osp init fail\n");
         }
 
         printf("demo client osp\n");
-        g_cCApp.CreateApp("OspClientApp",CLIENT_APP_ID,CLIENT_APP_PRI,MAX_MSG_WAITING);
+        for(i = 0;i < CLIENT_APP_SUM;i++ ){
+                g_cCApp[i] = new CCApp();
+#if 0
+                //设计到线程安全，不使用malloc
+                g_cCApp[i] = (CCApp*)malloc(sizeof(CCApp));
+#endif
+                if(!g_cCApp[i]){
+                        OspLog(LOG_LVL_ERROR,"[main]app malloc error\n");
+                        printf("[main]app malloc error\n");
+                        for(j = 0;j < i;j++){
+                                delete(g_cCApp[j]);
+                        }
+                        OspQuit();
+                        return -1;
+                }
+                g_cCApp[i]->CreateApp("OspClientApp"+sprintf(chAppNum,"%d",i)
+                                ,CLIENT_APP_ID+i,CLIENT_APP_PRI,MAX_MSG_WAITING);
+        }
+//        g_cCApp.CreateApp("OspClientApp",CLIENT_APP_ID,CLIENT_APP_PRI,MAX_MSG_WAITING);
         ret = OspCreateTcpNode(0,OSP_AGENT_CLIENT_PORT);
         if(INVALID_SOCKET == ret){
                 OspPrintf(1,0,"create positive node failed,quit\n");
-        printf("node created failed\n");
+                printf("node created failed\n");
                 OspQuit();
                 return -1;
         }
@@ -117,6 +180,7 @@ int main(){
         OspRegCommand("SignIn",(void*)SendSignInCmd,"");
         OspRegCommand("SignOut",(void*)SendSignOutCmd,"");
         OspRegCommand("FileUpload",(void*)SendFileUploadCmd,"");
+        OspRegCommand("MFileUpload",(void*)MultSendFileUploadCmd,"");
         OspRegCommand("Cancel",(void*)SendCancelCmd,"");
         OspRegCommand("Remove",(void*)SendRemoveCmd,"");
         OspRegCommand("GoOn",(void*)SendFileGoOnCmd,"");
@@ -125,6 +189,9 @@ int main(){
                 OspDelay(100);
 
         OspQuit();
+        for(i = 0;i < CLIENT_APP_SUM;i++ ){
+                delete(g_cCApp[i]);
+        }
         return 0;
 }
 
@@ -136,9 +203,7 @@ void CCInstance::ClientEntry(CMessage *const pMsg){
           }
           g_dwdstNode = OspConnectTcpNode(inet_addr(SERVER_IP),SERVER_PORT,10,3);
           if(INVALID_NODE == g_dwdstNode){
-//                SetTimer(DISCONNET_TIMER, osp_test_interval);
-//                OspLog(LOG_LVL_KEY, "Connect extern node failed. exit.\n");
-//                OspTaskResume(g_hMainTask);
+                  OspLog(LOG_LVL_KEY, "Connect extern node failed. exit.\n");
                   return;
           }
           m_bConnectedFlag = true;
@@ -538,4 +603,7 @@ void CCInstance::FileRemoveAck(CMessage* const pMsg){
         emFileStatus = REMOVED;
         m_wUploadFileSize = 0;
         m_wFileSize = 0;
+        NextState(IDLE_STATE);
 }
+
+

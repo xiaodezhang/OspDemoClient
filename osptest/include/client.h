@@ -38,6 +38,8 @@
 #define FILE_GO_ON                     (EV_CLIENT_TEST_BGN+24)
 #define FILE_GO_ON_ACK                 (EV_CLIENT_TEST_BGN+25)
 
+#define FILE_UPLOAD_DAEMON_CMD         (EV_CLIENT_TEST_BGN+26)
+
 
 typedef struct tagSinInfo{
         s8 g_Username[AUTHORIZATION_NAME_SIZE];
@@ -121,6 +123,7 @@ public:
         void FileRemoveAck(CMessage* const);
         void FileGoOnCmd(CMessage* const);
         void FileGoOnAck(CMessage* const);
+
 
 };
 
