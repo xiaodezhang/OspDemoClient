@@ -2,18 +2,21 @@
 #include"commondemo.h"
 
 
-#define RUNNING_STATE                 1
-#define IDLE_STATE                    0
-#define OSP_AGENT_CLIENT_PORT         20001
-#define EV_CLIENT_TEST_BGN           (u16)0x1111
+#define RUNNING_STATE                 (1)
+#define IDLE_STATE                    (0)
+#define OSP_AGENT_CLIENT_PORT         (20001)
+#define EV_CLIENT_TEST_BGN           ((u16)0x1111)
 #define SERVER_CONNECT_TEST          (EV_CLIENT_TEST_BGN+1)
-#define CLIENT_ENTRY                 (EV_CLIENT_TEST_BGN+2)
 #define CLIENT_APP_ID                (u16)3
 #define MAX_MSG_WAITING              (u32)512
 #define CLIENT_APP_PRI               (u8)80
-#define SIGN_STATUS_IN                1
-#define SIGN_STATUS_OUT               0
-#define AUTHORIZATION_NAME_SIZE       20
+#define SIGN_STATUS_IN                (1)
+#define SIGN_STATUS_OUT               (0)
+#define AUTHORIZATION_NAME_SIZE       (20)
+#define MAX_IP_LENGTH                 (16)
+#define SERVER_IP                    "172.16.236.241"
+#define SERVER_PORT                  ((u16)20000)
+
 
 #if 1
 #define BUFFER_SIZE                   (u16)(MAX_MSG_LEN >> 1)
@@ -38,23 +41,32 @@
 #define FILE_GO_ON                     (EV_CLIENT_TEST_BGN+24)
 #define FILE_GO_ON_ACK                 (EV_CLIENT_TEST_BGN+25)
 
-#define FILE_UPLOAD_DAEMON_CMD         (EV_CLIENT_TEST_BGN+26)
 
+#define FILE_STABLE_REMOVE             (EV_CLIENT_TEST_BGN+27)
+#define FILE_STABLE_REMOVE_ACK         (EV_CLIENT_TEST_BGN+28)
+
+#define SIGN_IN_CMD                    (EV_CLIENT_TEST_BGN+29)
 
 typedef struct tagSinInfo{
-        s8 g_Username[AUTHORIZATION_NAME_SIZE];
-        s8 g_Passwd[AUTHORIZATION_NAME_SIZE];
+        s8 Username[AUTHORIZATION_NAME_SIZE];
+        s8 Passwd[AUTHORIZATION_NAME_SIZE];
 }TSinInfo;
 
 typedef enum tagEM_FILE_STATUS{
-                GO_ON_SEND       = 0,
-                RECEIVE_CANCEL   = 1,
-                RECEIVE_REMOVE   = 2,
-                CANCELED         = 3,
-                REMOVED          = 4,
-                FINISHED         = 5
+                STATUS_INIT             = -1,
+                //processing state
+                STATUS_SEND_UPLOAD       = 0,
+                STATUS_SEND_CANCEL      = 1,
+                STATUS_SEND_REMOVE      = 2,
+                STATUS_RECEIVE_UPLOAD   = 3,
+                STATUS_RECEIVE_CANCEL   = 4,
+                STATUS_RECEIVE_REMOVE   = 5,
+                //stable state
+                STATUS_UPLOADING        = 6,
+                STATUS_CANCELLED        = 7,
+                STATUS_REMOVED          = 8,
+                STATUS_FINISHED         = 9 
 }EM_FILE_STATUS;
-
 
 class CCInstance : public CInstance{
 
@@ -78,21 +90,23 @@ private:
                                            //增加限制值,64位系统不存在这样的问题。
         u32         m_wUploadFileSize;
         EM_FILE_STATUS emFileStatus;
+        u8          m_byServerIp[MAX_IP_LENGTH];
+        u16         m_wServerPort;
 private:
         void InstanceEntry(CMessage *const);
         void DaemonInstanceEntry(CMessage *const,CApp*);
         tCmdNode *m_tCmdChain;
         tCmdNode *m_tCmdDaemonChain;
         FILE *file;
-        bool m_bSignFlag;
-        bool m_bConnectedFlag;
 public:
         CCInstance(): m_dwDisInsID(0),file(NULL),m_wFileSize(0)
-                     ,m_wUploadFileSize(0),m_bSignFlag(false)
-                      ,m_bConnectedFlag(false),m_tCmdChain(NULL)
-                      ,m_tCmdDaemonChain(NULL),emFileStatus(GO_ON_SEND){
+                     ,m_wUploadFileSize(0)
+                     ,m_tCmdChain(NULL)
+                     ,m_tCmdDaemonChain(NULL),emFileStatus(STATUS_INIT)
+                     ,m_wServerPort(SERVER_PORT){
                 memset(file_name_path,0,sizeof(u8)*MAX_FILE_NAME_LENGTH);
                 memset(buffer,0,sizeof(u8)*BUFFER_SIZE);
+                memcpy(m_byServerIp,SERVER_IP,sizeof(SERVER_IP));
                 MsgProcessInit();
         }
         ~CCInstance(){
@@ -105,12 +119,11 @@ public:
 
 
         //注册处理函数
-        void ClientEntry(CMessage* const);
         void SignInCmd(CMessage* const);
         void SignInAck(CMessage* const);
         void SignOutCmd(CMessage* const);
         void SignOutAck(CMessage* const);
-        void FileNameAck(CMessage* const);
+        void FileReceiveUploadAck(CMessage* const);
 
         void FileUploadCmd(CMessage* const);
 
@@ -123,6 +136,7 @@ public:
         void FileRemoveAck(CMessage* const);
         void FileGoOnCmd(CMessage* const);
         void FileGoOnAck(CMessage* const);
+        void FileStableRemoveAck(CMessage* const);
 
 
 };

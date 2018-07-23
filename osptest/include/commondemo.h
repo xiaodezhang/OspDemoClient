@@ -42,9 +42,8 @@ const u8 MAX_ALIAS_LENGTH = 20;
 
 
 
-#define FILE_NAME_SEND_CMD           (EV_CLIENT_TEST_BGN+8)
-#define FILE_NAME_SEND               (EV_CLIENT_TEST_BGN+9)
-#define FILE_NAME_ACK                (EV_CLIENT_TEST_BGN+10)
+#define FILE_SEND_UPLOAD               (EV_CLIENT_TEST_BGN+9)
+#define FILE_RECEIVE_UPLOAD_ACK        (EV_CLIENT_TEST_BGN+10)
 
 #define FILE_UPLOAD_CMD              (EV_CLIENT_TEST_BGN+11)
 #define FILE_UPLOAD_ACK              (EV_CLIENT_TEST_BGN+12)
@@ -52,9 +51,6 @@ const u8 MAX_ALIAS_LENGTH = 20;
 #define FILE_FINISH_ACK              (EV_CLIENT_TEST_BGN+14)
 #define FILE_CANCEL                  (EV_CLIENT_TEST_BGN+15)
 #define FILE_REMOVE                  (EV_CLIENT_TEST_BGN+16)
-
-#define SIGN_IN_CMD                  (EV_CLIENT_TEST_BGN+17)
-
 
 
 #endif /*_COMMON_DEMO_H*/
