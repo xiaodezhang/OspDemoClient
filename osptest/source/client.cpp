@@ -130,52 +130,40 @@ API void Connect2Server(){
 API void SendFileGoOnCmd(){
 
 
-        ::OspPost(MAKEIID(g_wTestSingleAppId,CLIENT_INSTANCE_ID),FILE_GO_ON_CMD,
-                        NULL,0);
+        if(OSP_OK != ::OspPost(MAKEIID(g_wTestSingleAppId,CLIENT_INSTANCE_ID),FILE_GO_ON_CMD,
+                        NULL,0)){
+               OspLog(LOG_LVL_ERROR,"[SendFileGoOnCmd] post error\n");
+        }
 }
 
 API void SendCancelCmd(){
 
-#if 0
-        CCInstance *ccIns;
-        u16 wCmdRepeatTimes = 0;
 
-        //测试对应app中instance的文件状态量，为了防止服务器响应延迟，设置超时检查
-        ccIns = (CCInstance*)((CApp*)g_cCApp[wCancelClientAppId])->GetInstance(CLIENT_INSTANCE_ID);
-
-//       OspDelay(SERVER_DELAY);
-       while(ccIns->emFileStatus != STATUS_UPLOADING
-                       || g_wCmdRepeatTimes++ != MAX_CMD_REPEAT_TIMES){
-               OspDelay(SERVER_DELAY);
+       if(OSP_OK != ::OspPost(MAKEIID(g_wTestSingleAppId,CLIENT_INSTANCE_ID),SEND_CANCEL_CMD,
+                        NULL,0)){
+               OspLog(LOG_LVL_ERROR,"[SendCancel] post error\n");
        }
-       if(ccIns->emFileStatus != STATUS_UPLOADING){
-               OspLog(LOG_LVL_ERROR,"[SendCancelCmd]this file is not uploading \
-                               or server delayed!\n");
-               return;
-       }
-#endif
-       ::OspPost(MAKEIID(g_wTestSingleAppId,CLIENT_INSTANCE_ID),SEND_CANCEL_CMD,
-                        NULL,0);
-//       ccIns->emFileStatus = SEND_CANCEL;
 }
 
 API void SendRemoveCmd(){
 
-        ::OspPost(MAKEIID(g_wTestSingleAppId,CLIENT_INSTANCE_ID),SEND_REMOVE_CMD,
-                        NULL,0);
+        if(OSP_OK != ::OspPost(MAKEIID(g_wTestSingleAppId,CLIENT_INSTANCE_ID),SEND_REMOVE_CMD,
+                        NULL,0)){
+               OspLog(LOG_LVL_ERROR,"[SendRemoveCmd] post error\n");
+        }
 }
 
 API void SendSignInCmd(){
 
         TSinInfo tSinInfo;
-        strcpy(tSinInfo.Username,"admin");
-        strcpy(tSinInfo.Passwd,"admin");
 
         //查询所有app instance，找到空闲的instance来执行sign in操作
-
         u16 i,wAppId;
         bool bPendingFlag = false;
         CCInstance *ccIns;
+
+        strcpy(tSinInfo.Username,"admin");
+        strcpy(tSinInfo.Passwd,"admin");
 
         for(i = 0;i < CLIENT_APP_SUM;i++){
                 ccIns = (CCInstance*)((CApp*)g_cCApp[i])->GetInstance(CLIENT_INSTANCE_ID);
@@ -195,14 +183,18 @@ API void SendSignInCmd(){
                 return;
         }
 
-        ::OspPost(MAKEIID(wAppId,CInstance::DAEMON),SIGN_IN_CMD,
-                        &tSinInfo,sizeof(tSinInfo));
+        if(OSP_OK != ::OspPost(MAKEIID(wAppId,CInstance::DAEMON),SIGN_IN_CMD,
+                        &tSinInfo,sizeof(tSinInfo))){
+               OspLog(LOG_LVL_ERROR,"[SendSignInCmd] post error\n");
+        }
 }
 
 
 API void SendSignOutCmd(){
 
-        ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::DAEMON),SIGN_OUT_CMD);
+        if(OSP_OK != ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::DAEMON),SIGN_OUT_CMD)){
+               OspLog(LOG_LVL_ERROR,"[SendSignOutCmd] post error\n");
+        }
 }
 
 static CCInstance* GetPendingInstance(u16 insId,CCApp *ccApp[],u16 appNum){
@@ -238,8 +230,11 @@ static void UploadCmdSingle(const s8* filename){
                 return;
         }
         g_wTestSingleAppId = ccIns->GetAppID();
-        ::OspPost(MAKEIID(ccIns->GetAppID(),CLIENT_INSTANCE_ID),FILE_UPLOAD_CMD,
-                        filename,strlen(filename)+1);
+        OspPrintf(1,0,"appid:%d\n",g_wTestSingleAppId);
+        if(OSP_OK !=::OspPost(MAKEIID(ccIns->GetAppID(),CLIENT_INSTANCE_ID),FILE_UPLOAD_CMD,
+                        filename,strlen(filename)+1)){
+               OspLog(LOG_LVL_ERROR,"[UploadCmdSingle] post error\n");
+        }
 }
 
 API void SendFileUploadCmd(){
@@ -249,8 +244,9 @@ API void SendFileUploadCmd(){
 
 API void MultSendFileUploadCmd(){
 
-#if 0
+#if 1
         UploadCmdSingle("mydoc.7z");
+        OspDelay(200);
         UploadCmdSingle("test_file_name");
 #else
         ::OspPost(MAKEIID(3,CLIENT_INSTANCE_ID),FILE_UPLOAD_CMD,
@@ -263,6 +259,7 @@ API void MultSendFileUploadCmd(){
 void CCInstance::FileUploadCmd(CMessage*const pMsg){
 
         if(!g_bSignFlag){
+                OspLog(SYS_LOG_LEVEL,"[FileUploadCmd]not signed,please sign in first\n");
                 //TODO:注册函数改为有返回值的，重新sign in部分改为调用执行
                 return;
         }
@@ -332,7 +329,7 @@ void CCInstance::SignInCmd(CMessage *const pMsg){
                 scanf("ip:%s port:%d\n",server_ip,server_port);
                 g_dwdstNode = OspConnectTcpNode(inet_addr(SERVER_IP),SERVER_PORT,10,3);
                 if(INVALID_NODE == g_dwdstNode){
-                        OspLog(LOG_LVL_ERROR, "[FileUploadCmd]Connect to server faild.\n");
+                        OspLog(LOG_LVL_ERROR, "[SignInCmd]Connect to server faild.\n");
                         return;
                 }else{
                         g_bConnectedFlag = true;
@@ -348,7 +345,7 @@ void CCInstance::SignInCmd(CMessage *const pMsg){
                 return;
         }
         if(g_bSignFlag){
-                OspLog(SYS_LOG_LEVEL,"sign in already\n");
+                OspLog(SYS_LOG_LEVEL,"[SignInCmd]sign in already\n");
                 return;
         }
         if(post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON),SIGN_IN
@@ -521,6 +518,7 @@ void CCInstance::MsgProcessInit(){
         //common Instance
         RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_UPLOAD_CMD),&CCInstance::FileUploadCmd,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,SEND_REMOVE_CMD),&CCInstance::RemoveCmd,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,SEND_REMOVE_CMD),&CCInstance::RemoveCmd,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,SEND_CANCEL_CMD),&CCInstance::CancelCmd,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_GO_ON_CMD),&CCInstance::FileGoOnCmd,&m_tCmdChain);
 
@@ -533,6 +531,11 @@ void CCInstance::MsgProcessInit(){
                         ,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_STABLE_REMOVE_ACK),&CCInstance::FileStableRemoveAck,
                         &m_tCmdChain);
+
+        //直接返回不处理，调试信息完整，避免只返回can not find the EState
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,SEND_CANCEL_CMD),&CCInstance::CancelCmd,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_GO_ON_CMD),&CCInstance::FileGoOnCmd,&m_tCmdChain);
+
 }
 
 void CCInstance::NodeChainEnd(){
@@ -804,6 +807,8 @@ void CCInstance::FileRemoveAck(CMessage* const pMsg){
         m_wUploadFileSize = 0;
         m_wFileSize = 0;
         NextState(IDLE_STATE);
+        //TODO:key print
+        printf("file remove\n");
 }
 
 void CCInstance::FileStableRemoveAck(CMessage* const pMsg){
@@ -812,4 +817,6 @@ void CCInstance::FileStableRemoveAck(CMessage* const pMsg){
         m_wUploadFileSize = 0;
         m_wFileSize = 0;
         NextState(IDLE_STATE);
+        //TODO:key print
+        printf("file remove\n");
 }
