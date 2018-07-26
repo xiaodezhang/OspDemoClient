@@ -19,16 +19,16 @@ API void MultSendFileUploadCmd();
 API void SendCancelCmd();
 API void SendRemoveCmd();
 API void SendFileGoOnCmd();
+API void Disconnect2Server();
 
 static void UploadCmdSingle(const s8*);
 
 static u32 g_dwdstNode;
-static bool g_bConnectedFlag;
-static bool g_bSignFlag;
 
 static CCApp *g_cCApp[CLIENT_APP_SUM];
 
 static u16 g_wTestSingleAppId;
+
 
 int main(){
 
@@ -39,8 +39,6 @@ int main(){
 #endif
         s16 i,j;
         s8 chAppNum[APP_NUM_SIZE];
-        g_bConnectedFlag = false;
-        g_bSignFlag = false;
 
         if(!ret){
                 OspPrintf(1,0,"osp init fail\n");
@@ -78,6 +76,7 @@ int main(){
 
 #ifdef _LINUX_
         OspRegCommand("Connect",(void*)Connect2Server,"");
+        OspRegCommand("DisConnect",(void*)Disconnect2Server,"");
         OspRegCommand("SignIn",(void*)SendSignInCmd,"");
         OspRegCommand("SignOut",(void*)SendSignOutCmd,"");
         OspRegCommand("FileUpload",(void*)SendFileUploadCmd,"");
@@ -101,7 +100,20 @@ int main(){
 #endif
         }else{
                 OspLog(SYS_LOG_LEVEL, "[main]Connect to server successfully.\n");
-                g_bConnectedFlag = true;
+                for(i = 0;i < CLIENT_APP_SUM;i++){
+                        //断链注册
+                        if(OSP_OK !=OspNodeDiscCBRegQ(g_dwdstNode,i+CLIENT_APP_ID,CInstance::DAEMON)){
+                            OspLog(LOG_LVL_ERROR,"[main]regis disconnect error\n");
+                            return -1;
+                        }
+                        //通知连接
+                        if(OSP_OK != ::OspPost(MAKEIID(i+CLIENT_APP_ID,CInstance::DAEMON),MY_CONNECT,
+                                        NULL,0)){
+                               OspLog(LOG_LVL_ERROR,"[Connecte2Server] post error\n");
+                               //TODO:错误处理方式
+                               return -1;
+                        }
+                }
         }
         while(1)
                 OspDelay(100);
@@ -115,16 +127,48 @@ int main(){
 
 API void Connect2Server(){
 
-          if(g_bConnectedFlag){
-                  OspLog(SYS_LOG_LEVEL,"connected already\n");
-                  return;
-          }
-          g_dwdstNode = OspConnectTcpNode(inet_addr(SERVER_IP),SERVER_PORT,10,3);
-          if(INVALID_NODE == g_dwdstNode){
-                  OspLog(LOG_LVL_KEY, "Connect extern node failed. exit.\n");
-                  return;
-          }
-          g_bConnectedFlag = true;
+        u16 i;
+
+#if 0
+        OspSemTake(tSemHandle);
+        if(g_bConnectedFlag){
+                OspLog(SYS_LOG_LEVEL,"connected already\n");
+                OspSemGive(tSemHandle);
+                return;
+        }
+        OspSemGive(tSemHandle);
+#endif
+
+        g_dwdstNode = OspConnectTcpNode(inet_addr(SERVER_IP),SERVER_PORT,10,3);
+        if(INVALID_NODE == g_dwdstNode){
+                OspLog(LOG_LVL_KEY, "Connect extern node failed. exit.\n");
+                return;
+        }
+
+        //断链注册
+        for(i = 0;i < CLIENT_APP_SUM;i++){
+                //断链注册
+                if(OSP_OK !=OspNodeDiscCBRegQ(g_dwdstNode,i+CLIENT_APP_ID,CInstance::DAEMON)){
+                    OspLog(LOG_LVL_ERROR,"[main]regis disconnect error\n");
+                    return;
+                }
+                //通知连接
+                if(OSP_OK != ::OspPost(MAKEIID(i+CLIENT_APP_ID,CInstance::DAEMON),MY_CONNECT,
+                                NULL,0)){
+                       OspLog(LOG_LVL_ERROR,"[Connecte2Server] post error\n");
+                       //TODO:错误处理方式
+                    return;
+                }
+        }
+
+}
+
+API void Disconnect2Server(){
+
+        if(!OspDisconnectTcpNode(g_dwdstNode)){
+                OspLog(LOG_LVL_ERROR,"[Disconnect2Server]connecte failed\n");
+                return;
+        }
 }
 
 API void SendFileGoOnCmd(){
@@ -258,11 +302,6 @@ API void MultSendFileUploadCmd(){
 
 void CCInstance::FileUploadCmd(CMessage*const pMsg){
 
-        if(!g_bSignFlag){
-                OspLog(SYS_LOG_LEVEL,"[FileUploadCmd]not signed,please sign in first\n");
-                //TODO:注册函数改为有返回值的，重新sign in部分改为调用执行
-                return;
-        }
         //未处理完状态，重新放入消息队列等待状态稳定
         if(emFileStatus >= STATUS_SEND_UPLOAD&&
                         emFileStatus <= STATUS_RECEIVE_REMOVE){
@@ -324,7 +363,8 @@ void CCInstance::SignInCmd(CMessage *const pMsg){
         u8 server_ip[MAX_IP_LENGTH];
         u16 server_port;
 
-        if(!g_bConnectedFlag){
+        if(!m_bConnectedFlag){
+#if 0
                 //TODO:注册函数改为有返回值的，重新连接部分改为调用执行
                 scanf("ip:%s port:%d\n",server_ip,server_port);
                 g_dwdstNode = OspConnectTcpNode(inet_addr(SERVER_IP),SERVER_PORT,10,3);
@@ -332,19 +372,18 @@ void CCInstance::SignInCmd(CMessage *const pMsg){
                         OspLog(LOG_LVL_ERROR, "[SignInCmd]Connect to server faild.\n");
                         return;
                 }else{
-                        g_bConnectedFlag = true;
+                        m_bConnectedFlag = true;
                 }
+#endif
+                OspLog(SYS_LOG_LEVEL,"[SignInCmd]not connected\n");
+                return;
         }
 
         if(!pMsg->content || pMsg->length <= 0){
                 OspLog(LOG_LVL_ERROR,"[SignInCmd] pMsg content is NULL\n");
                 return;
         }
-        if(!g_bConnectedFlag){
-                OspLog(LOG_LVL_ERROR,"[SignInCmd]not connected\n");
-                return;
-        }
-        if(g_bSignFlag){
+        if(m_bSignFlag){
                 OspLog(SYS_LOG_LEVEL,"[SignInCmd]sign in already\n");
                 return;
         }
@@ -357,88 +396,126 @@ void CCInstance::SignInCmd(CMessage *const pMsg){
 
 void CCInstance::SignInAck(CMessage * const pMsg){
 
-          if(pMsg->length <= 0 || !pMsg->content){
-                  OspLog(SYS_LOG_LEVEL,"sign in failed\n");
-                  OspPrintf(1,1,"sign in failed\n");
-                  printf("sign in failed\n");
-                  return;
-                  //TODO:向GUI发送重新登陆提示
-          }
-          if(strcmp((LPCSTR)pMsg->content,"failed") == 0){
-                  OspLog(SYS_LOG_LEVEL,"sign in failed\n");
-                  OspPrintf(1,1,"sign in failed\n");
-                  printf("sign in failed\n");
-                  printf("content:%s\n",pMsg->content);
-                  return;
-                  //TODO:向GUI发送重新登陆提示
-          }
-          g_bSignFlag = true;
-          OspLog(SYS_LOG_LEVEL,"[SignInAck]sign in successfully\n");
-          printf("[SignInAck]sign in successfully\n");
+        if(!m_bConnectedFlag){
+                OspLog(LOG_LVL_ERROR,"[SignInAck]disconnected\n");
+                return;
+        }
+
+        if(pMsg->length <= 0 || !pMsg->content){
+                OspLog(SYS_LOG_LEVEL,"[SignInAck]sign in failed\n");
+                printf("[SignInAck]sign in failed\n");
+                return;
+                //TODO:向GUI发送重新登陆提示
+        }
+        if(strcmp((LPCSTR)pMsg->content,"failed") == 0){
+                OspLog(SYS_LOG_LEVEL,"[SignInAck]sign in failed\n");
+                printf("[SignInAck]sign in failed\n");
+                return;
+                //TODO:向GUI发送重新登陆提示
+        }
+
+        //通知登陆
+        for(i = 0;i < CLIENT_APP_SUM;i++){
+                if(post(MAKEIID(i+CLIENT_APP_ID,CInstance::DAEMON),MY_SIGNED),NULL,0){
+                        OspLog(LOG_LVL_ERROR,"[SignInAck] post error\n");
+                        //TODO:错误处理
+                        return;
+                }
+        }
+        OspLog(SYS_LOG_LEVEL,"[SignInAck]sign in successfully\n");
+        printf("[SignInAck]sign in successfully\n");
 }
 
 void CCInstance::SignOutCmd(CMessage * const pMsg){
 
-          if(!g_bSignFlag){
-                  OspLog(SYS_LOG_LEVEL,"haven't sign in\n");
-                  return;
-          }
-          if(OSP_OK != post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON)
-                                  ,SIGN_OUT,NULL,0,g_dwdstNode)){
-                  OspLog(LOG_LVL_ERROR,"[SignOutCmd] post error\n");
-                  return;
-          }
-          OspLog(SYS_LOG_LEVEL,"get sign out cmd,send to server\n");
-          OspPrintf(1,1,"get sign out cmd,send to server\n");
+        if(!m_bConnectedFlag){
+                OspLog(LOG_LVL_ERROR,"[SignOutCmd]disconnected\n");
+                return;
+        }
+
+        if(!m_bSignFlag){
+                OspLog(SYS_LOG_LEVEL,"[SignOutCmd]haven't sign in\n");
+                return;
+        }
+
+        if(OSP_OK != post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON)
+                                ,SIGN_OUT,NULL,0,g_dwdstNode)){
+                OspLog(LOG_LVL_ERROR,"[SignOutCmd] post error\n");
+                return;
+        }
+        OspLog(SYS_LOG_LEVEL,"get sign out cmd,send to server\n");
+        OspPrintf(1,1,"get sign out cmd,send to server\n");
 
 }
 
 void CCInstance::SignOutAck(CMessage * const pMsg){
 
-          g_bSignFlag = false;
-          OspLog(SYS_LOG_LEVEL,"[SignOutAck]sign out\n");
-          printf("[SignOutAck]get sign out ack\n");
+        if(!m_bConnectedFlag){
+                OspLog(LOG_LVL_ERROR,"[SignOutAck]disconnected\n");
+                return;
+        }
+          //通知登出
+        for(i = 0;i < CLIENT_APP_SUM;i++){
+                if(post(MAKEIID(i+CLIENT_APP_ID,CInstance::DAEMON),MY_DISSIGNED),NULL,0){
+                        OspLog(LOG_LVL_ERROR,"[SignOutAck] post error\n");
+                        //TODO:错误处理
+                        return;
+                }
+        }
+
+        OspLog(SYS_LOG_LEVEL,"[SignOutAck]sign out\n");
+        printf("[SignOutAck]get sign out ack\n");
 }
 
 void CCInstance::FileReceiveUploadAck(CMessage * const pMsg){
 
-          size_t buffer_size;
+        size_t buffer_size;
 
-          m_dwDisInsID = pMsg->srcid;
+        if(!m_bSignFlag){
+                OspLog(SYS_LOG_LEVEL,"[FileReceiveUploadAck]sign out\n");
+                return;
+        }
 
-          buffer_size = fread(buffer,1,sizeof(s8)*BUFFER_SIZE,file);
-          if(ferror(file)){
-                  if(fclose(file) == 0){
-                          OspLog(SYS_LOG_LEVEL,"[FileReceiveUploadAck]file closed\n");
+        m_dwDisInsID = pMsg->srcid;
 
-                  }else{
-                          OspLog(LOG_LVL_ERROR,"[FileReceiveUploadAck]file close failed\n");
-                  }
-                  //TODO:通知server关闭文件
-                  OspLog(LOG_LVL_ERROR,"[FileReceiveUploadAck] read-file error\n");
+        buffer_size = fread(buffer,1,sizeof(s8)*BUFFER_SIZE,file);
+        if(ferror(file)){
+                if(fclose(file) == 0){
+                        OspLog(SYS_LOG_LEVEL,"[FileReceiveUploadAck]file closed\n");
+                        file = NULL;
+                }else{
+                        OspLog(LOG_LVL_ERROR,"[FileReceiveUploadAck]file close failed\n");
+                }
+                //TODO:通知server关闭文件
+                OspLog(LOG_LVL_ERROR,"[FileReceiveUploadAck] read-file error\n");
+                return;
+        }
+        if(feof(file)){//文件已读取完毕，终止
+             if(OSP_OK != post(pMsg->srcid,FILE_FINISH
+                           ,buffer,buffer_size,g_dwdstNode)){
+                  OspLog(LOG_LVL_ERROR,"[FileReceiveUploadAck]FILE_FINISH post error\n");
                   return;
-          }
-          if(feof(file)){//文件已读取完毕，终止
-               if(OSP_OK != post(pMsg->srcid,FILE_FINISH
-                             ,buffer,buffer_size,g_dwdstNode)){
-                    OspLog(LOG_LVL_ERROR,"[FileReceiveUploadAck]FILE_FINISH post error\n");
-                    return;
-               }
-          
-          }else{
-               if(OSP_OK != post(pMsg->srcid,FILE_UPLOAD
-                             ,buffer,buffer_size,g_dwdstNode)){
-                    OspLog(LOG_LVL_ERROR,"[FileReceiveUploadAck]FILE_UPLOAD post error\n");
-                    return;
-               }
-          }
-          m_wUploadFileSize += buffer_size;
-          printf("upload file rate:%f\n",(float)m_wUploadFileSize/(float)m_wFileSize);
+             }
+        
+        }else{
+             if(OSP_OK != post(pMsg->srcid,FILE_UPLOAD
+                           ,buffer,buffer_size,g_dwdstNode)){
+                  OspLog(LOG_LVL_ERROR,"[FileReceiveUploadAck]FILE_UPLOAD post error\n");
+                  return;
+             }
+        }
+        m_wUploadFileSize += buffer_size;
+        printf("upload file rate:%f\n",(float)m_wUploadFileSize/(float)m_wFileSize);
 }
 
 void CCInstance::FileUploadAck(CMessage* const pMsg){
 
         size_t buffer_size;
+
+        if(!m_bSignFlag){
+                OspLog(LOG_LVL_ERROR,"[FileUploadAck]sign out\n");
+                return;
+        }
 
         if(!pMsg->content || pMsg->length <= 0){
                  OspLog(LOG_LVL_ERROR,"[FileUploadAck] pMsg content is NULL\n");
@@ -452,7 +529,7 @@ void CCInstance::FileUploadAck(CMessage* const pMsg){
                 if(ferror(file)){
                         if(fclose(file) == 0){
                                 OspLog(SYS_LOG_LEVEL,"[FileUploadAck]file closed\n");
-
+                                file = NULL;
                         }else{
                                 OspLog(LOG_LVL_ERROR,"[FileUploadAck]file close failed\n");
                         }
@@ -493,13 +570,16 @@ void CCInstance::FileUploadAck(CMessage* const pMsg){
 
 void CCInstance::FileFinishAck(CMessage* const pMsg){
         
-        OspLog(SYS_LOG_LEVEL,"file upload finish\n");
         if(fclose(file) == 0){
+                file = NULL;
                 OspLog(SYS_LOG_LEVEL,"[FileFinishAck]file closed\n");
 
         }else{
                 OspLog(LOG_LVL_ERROR,"[FileFinishAck]file close failed\n");
+                return;
         }
+
+        OspLog(SYS_LOG_LEVEL,"file upload finish\n");
         emFileStatus = STATUS_FINISHED;
         NextState(IDLE_STATE);
         m_wFileSize = 0;
@@ -514,6 +594,12 @@ void CCInstance::MsgProcessInit(){
 
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_OUT_ACK),&CCInstance::SignOutAck,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_IN_ACK),&CCInstance::SignInAck,&m_tCmdDaemonChain);
+
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,OSP_DISCONNECT),&CCInstance::DealDisconnect,&m_tCmdDaemonChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,MY_CONNECT),&CCInstance::notifyConnected,&m_tCmdDaemonChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,MY_SIGNED),&CCInstance::notifySigned,&m_tCmdDaemonChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,MY_DISSIGNED),&CCInstance::notifyDissigned,&m_tCmdDaemonChain);
+
 
         //common Instance
         RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_UPLOAD_CMD),&CCInstance::FileUploadCmd,&m_tCmdChain);
@@ -531,6 +617,7 @@ void CCInstance::MsgProcessInit(){
                         ,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_STABLE_REMOVE_ACK),&CCInstance::FileStableRemoveAck,
                         &m_tCmdChain);
+
 
         //直接返回不处理，调试信息完整，避免只返回can not find the EState
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SEND_CANCEL_CMD),&CCInstance::CancelCmd,&m_tCmdChain);
@@ -610,14 +697,23 @@ bool CCInstance::FindProcess(u32 EventState,MsgProcess* c_MsgProcess,tCmdNode* t
 
 void CCInstance::InstanceEntry(CMessage * const pMsg){
 
-        if(NULL == pMsg){
-                OspLog(LOG_LVL_ERROR,"[InstanceEntry] pMsg is NULL\n");
-        }
-
         u32 curState = CurState();
         u16 curEvent = pMsg->event;
         MsgProcess c_MsgProcess;
 
+        if(!m_bConnectedFlag){
+                OspLog(LOG_LVL_ERROR,"[InstanceEntry]disconnected\n");
+                return;
+        }
+        if(!m_bSignFlag){
+                OspLog(SYS_LOG_LEVEL,"[FileReceiveUploadAck]sign out\n");
+                return;
+        }
+
+        if(NULL == pMsg){
+                OspLog(LOG_LVL_ERROR,"[InstanceEntry] pMsg is NULL\n");
+                return;
+        }
 
         if(FindProcess(MAKEESTATE(curState,curEvent),&c_MsgProcess,m_tCmdChain)){
                 (this->*c_MsgProcess)(pMsg);
@@ -630,14 +726,14 @@ void CCInstance::InstanceEntry(CMessage * const pMsg){
 
 void CCInstance::DaemonInstanceEntry(CMessage *const pMsg,CApp *pCApp){
 
-        if(NULL == pMsg){
-                OspLog(LOG_LVL_ERROR,"[DaemonInstanceEntry] pMsg is NULL\n");
-        }
-
         u32 curState = CurState();
         u16 curEvent = pMsg->event;
         MsgProcess c_MsgProcess;
 
+        if(NULL == pMsg){
+                OspLog(LOG_LVL_ERROR,"[DaemonInstanceEntry] pMsg is NULL\n");
+                return;
+        }
 
         if(FindProcess(MAKEESTATE(curState,curEvent),&c_MsgProcess,m_tCmdDaemonChain)){
                 (this->*c_MsgProcess)(pMsg);
@@ -648,6 +744,7 @@ void CCInstance::DaemonInstanceEntry(CMessage *const pMsg,CApp *pCApp){
 }
 
 void CCInstance::RemoveCmd(CMessage* const pMsg){
+
 
         //从GUI的使用来说，这个可以保证
         if(emFileStatus == STATUS_INIT){
@@ -687,12 +784,6 @@ void CCInstance::RemoveCmd(CMessage* const pMsg){
 
 void CCInstance::FileGoOnCmd(CMessage* const pMsg){
 
-        //从GUI的使用来说，这个可以保证
-        if(emFileStatus == STATUS_INIT){
-                OspLog(LOG_LVL_ERROR,"[FileGoOnCmd]status error\n");
-                return;
-        }
-
         //未处理完状态，重新放入消息队列等待状态稳定
         if(emFileStatus >= STATUS_SEND_UPLOAD&&
                         emFileStatus <= STATUS_RECEIVE_REMOVE){
@@ -700,6 +791,12 @@ void CCInstance::FileGoOnCmd(CMessage* const pMsg){
                                ,NULL,0,g_dwdstNode)){
                         OspLog(LOG_LVL_ERROR,"[RemoveCmd] post error\n");
                 }
+                return;
+        }
+        
+        //从GUI的使用来说，这个可以保证
+        if(emFileStatus == STATUS_INIT){
+                OspLog(LOG_LVL_ERROR,"[FileGoOnCmd]status error,upload first\n");
                 return;
         }
 
@@ -713,18 +810,6 @@ void CCInstance::FileGoOnCmd(CMessage* const pMsg){
                 OspLog(SYS_LOG_LEVEL,"Already go on\n");
                 return;
         }
-
-#if 0
-        //暂停或终止处理延迟，重新放入客户端消息队列
-        //TODO:对于removed的处理可能需要修改
-        if(emFileStatus < STATUS_CANCELLED){
-                if(OSP_OK != post(MAKEIID(GetAppID(),GetInsID()),FILE_GO_ON_CMD
-                               ,NULL,0,g_dwdstNode)){
-                        OspLog(LOG_LVL_ERROR,"[FileGoOnCmd] post error\n");
-                }
-                return;
-        }
-#endif
 
         if(OSP_OK != post(m_dwDisInsID,FILE_GO_ON
                        ,NULL,0,g_dwdstNode)){
@@ -788,9 +873,10 @@ void CCInstance::FileCancelAck(CMessage* const pMsg){
 
         if(fclose(file) == 0){
                 OspLog(SYS_LOG_LEVEL,"[FileCancelAck]file closed\n");
-
+                file = NULL;
         }else{
                 OspLog(LOG_LVL_ERROR,"[FileCancelAck]file close failed\n");
+                return;
         }
         emFileStatus = STATUS_CANCELLED;
 }
@@ -799,9 +885,10 @@ void CCInstance::FileRemoveAck(CMessage* const pMsg){
 
         if(fclose(file) == 0){
                 OspLog(SYS_LOG_LEVEL,"[FileRemovelAck]file closed\n");
-
+                file = NULL;
         }else{
                 OspLog(LOG_LVL_ERROR,"[FileRemoveAck]file close failed\n");
+                return;
         }
         emFileStatus = STATUS_REMOVED;
         m_wUploadFileSize = 0;
@@ -819,4 +906,47 @@ void CCInstance::FileStableRemoveAck(CMessage* const pMsg){
         NextState(IDLE_STATE);
         //TODO:key print
         printf("file remove\n");
+}
+
+void CCInstance::DealDisconnect(CMessage* const pMsg){
+
+        //TODO:断开之后状态需要回收
+        m_bConnectedFlag = false;
+        m_bSignFlag = false;
+        //TODO：断点续传
+        if(file){
+                if(fclose(file) == 0){
+                        OspLog(SYS_LOG_LEVEL,"[FileRemovelAck]file closed\n");
+                        file = NULL;
+                }else{
+                        OspLog(LOG_LVL_ERROR,"[FileRemoveAck]file close failed\n");
+                        return;
+                }
+        }
+        //需要配合文件的关闭回收
+        emFileStatus = STATUS_INIT;
+        NextState(IDLE_STATE);
+        m_dwDisInsID = 0;
+        m_wFileSize = 0;
+        m_wUploadFileSize = 0;
+        //m_wServerPort = SERVER_PORT;
+        OspLog(SYS_LOG_LEVEL,"[DealDisconnect]disconnected\n");
+}
+
+void CCInstance::notifyConnected(CMessage* const pMsg){
+
+        m_bConnectedFlag = true;
+        OspLog(SYS_LOG_LEVEL,"[ServerConnected]server connected\n");
+}
+
+void CCInstance::notifySigned(CMessage* const pMsg){
+
+        m_bSignFlag = true;
+        OspLog(SYS_LOG_LEVEL,"[notifySigned]sign in\n");
+}
+
+void CCInstance::notifyDissigned(CMessage* const pMsg){
+
+        m_bSignFlag = false;
+        OspLog(SYS_LOG_LEVEL,"[notifyDissigned]sign out\n");
 }

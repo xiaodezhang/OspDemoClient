@@ -46,6 +46,7 @@
 #define FILE_STABLE_REMOVE_ACK         (EV_CLIENT_TEST_BGN+28)
 
 #define SIGN_IN_CMD                    (EV_CLIENT_TEST_BGN+29)
+#define MY_CONNECT                     (EV_CLIENT_TEST_BGN+30)
 
 typedef struct tagSinInfo{
         s8 Username[AUTHORIZATION_NAME_SIZE];
@@ -92,6 +93,8 @@ private:
         EM_FILE_STATUS emFileStatus;
         u8          m_byServerIp[MAX_IP_LENGTH];
         u16         m_wServerPort;
+        bool        m_bConnectedFlag;    //避免使用线程锁，将全局变量改为成员变量
+        bool        m_bSignFlag;         //避免使用线程锁，将全局变量改为成员变量
 private:
         void InstanceEntry(CMessage *const);
         void DaemonInstanceEntry(CMessage *const,CApp*);
@@ -100,8 +103,8 @@ private:
         FILE *file;
 public:
         CCInstance(): m_dwDisInsID(0),file(NULL),m_wFileSize(0)
-                     ,m_wUploadFileSize(0)
-                     ,m_tCmdChain(NULL)
+                     ,m_wUploadFileSize(0)，m_bConnectedFlag(false),
+                     ,m_tCmdChain(NULL),m_bSignedFlag(false),
                      ,m_tCmdDaemonChain(NULL),emFileStatus(STATUS_INIT)
                      ,m_wServerPort(SERVER_PORT){
                 memset(file_name_path,0,sizeof(u8)*MAX_FILE_NAME_LENGTH);
@@ -123,6 +126,9 @@ public:
         void SignInAck(CMessage* const);
         void SignOutCmd(CMessage* const);
         void SignOutAck(CMessage* const);
+
+
+
         void FileReceiveUploadAck(CMessage* const);
 
         void FileUploadCmd(CMessage* const);
@@ -137,6 +143,12 @@ public:
         void FileGoOnCmd(CMessage* const);
         void FileGoOnAck(CMessage* const);
         void FileStableRemoveAck(CMessage* const);
+
+        void notifyConnected(CMessage* const);
+        void notifySigned(CMessage* const);
+        void notifyDissigned(CMessage* const);
+        //断链检测处理函数
+        void DealDisconnect(CMessage* const);
 
 
 };
