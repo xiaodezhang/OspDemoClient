@@ -2,18 +2,19 @@
 #include"client.h"
 
 #define MAKEESTATE(state,event) ((u32)((event) << 4 + (state)))
-#define CLIENT_APP_SUM           (5)
-#define APP_NUM_SIZE             (20)
+#define CLIENT_APP_SUM           5
+#define APP_NUM_SIZE             20
 
-#define SERVER_DELAY             (1000)
+#define SERVER_DELAY             1000
+#define CREATE_TCP_NODE_TIMES     20
 
 #if 0
 #define MAX_CMD_REPEAT_TIMES     5
 #endif
 
 API void Connect2Server();
-API void SendSignInCmd();
-API void SendSignOutCmd();
+API int SendSignInCmd();
+API int SendSignOutCmd();
 API void SendFileUploadCmd();
 API void MultSendFileUploadCmd();
 API void SendCancelCmd();
@@ -39,6 +40,7 @@ int main(){
 #endif
         s16 i,j;
         s8 chAppNum[APP_NUM_SIZE];
+        bool bCreateTcpNodeFlag = false;
 
         if(!ret){
                 OspPrintf(1,0,"osp init fail\n");
@@ -60,9 +62,31 @@ int main(){
                         }
                         return -1;
                 }
-                g_cCApp[i]->CreateApp("OspClientApp"+sprintf(chAppNum,"%d",i)
-                                ,CLIENT_APP_ID+i,CLIENT_APP_PRI,MAX_MSG_WAITING);
+                if(OSP_OK != g_cCApp[i]->CreateApp("OspClientApp"+sprintf(chAppNum,"%d",i)
+                                ,CLIENT_APP_ID+i,CLIENT_APP_PRI,MAX_MSG_WAITING)){
+
+                        OspLog(LOG_LVL_ERROR,"[main]app create error\n");
+                        return -1;
+                }
         }
+#if 1
+        //尝试多次建立node，支持本地多个客户端的副本
+        for(i = 0;i < CREATE_TCP_NODE_TIMES;i++){
+                if(INVALID_SOCKET != (ret = OspCreateTcpNode(0,OSP_AGENT_CLIENT_PORT+i*3))){
+                        bCreateTcpNodeFlag = true;
+                        break;
+                }
+        }
+        if(!bCreateTcpNodeFlag){
+                OspQuit();
+                for(i = 0;i < CLIENT_APP_SUM;i++ ){
+                        delete(g_cCApp[i]);
+                }
+                OspPrintf(1,0,"[main]create positive node failed,quit\n");
+                printf("[main]node created failed\n");
+                return -1;
+        }
+#else
         ret = OspCreateTcpNode(0,OSP_AGENT_CLIENT_PORT);
         if(INVALID_SOCKET == ret){
                 OspQuit();
@@ -73,6 +97,7 @@ int main(){
                 printf("[main]node created failed\n");
                 return -1;
         }
+#endif
 
 #ifdef _LINUX_
         OspRegCommand("Connect",(void*)Connect2Server,"");
@@ -125,19 +150,20 @@ int main(){
         return 0;
 }
 
+API void Test_Sign(){
+
+#if 0
+        assert(0 == SendSignInCmd());
+        assert(0 == SendSignOutCmd());
+
+        SendSignInCmd();
+        SendSignInCmd();
+#endif
+}
+
 API void Connect2Server(){
 
         u16 i;
-
-#if 0
-        OspSemTake(tSemHandle);
-        if(g_bConnectedFlag){
-                OspLog(SYS_LOG_LEVEL,"connected already\n");
-                OspSemGive(tSemHandle);
-                return;
-        }
-        OspSemGive(tSemHandle);
-#endif
 
         g_dwdstNode = OspConnectTcpNode(inet_addr(SERVER_IP),SERVER_PORT,10,3);
         if(INVALID_NODE == g_dwdstNode){
@@ -160,13 +186,12 @@ API void Connect2Server(){
                     return;
                 }
         }
-
 }
 
 API void Disconnect2Server(){
 
         if(!OspDisconnectTcpNode(g_dwdstNode)){
-                OspLog(LOG_LVL_ERROR,"[Disconnect2Server]connecte failed\n");
+                OspLog(LOG_LVL_ERROR,"[Disconnect2Server]disconnecte failed\n");
                 return;
         }
 }
@@ -197,7 +222,7 @@ API void SendRemoveCmd(){
         }
 }
 
-API void SendSignInCmd(){
+API int SendSignInCmd(){
 
         TSinInfo tSinInfo;
 
@@ -206,7 +231,7 @@ API void SendSignInCmd(){
         bool bPendingFlag = false;
         CCInstance *ccIns;
 
-        strcpy(tSinInfo.Username,"admin");
+        strcpy(tSinInfo.Username,"Robert");
         strcpy(tSinInfo.Passwd,"admin");
 
         for(i = 0;i < CLIENT_APP_SUM;i++){
@@ -214,7 +239,7 @@ API void SendSignInCmd(){
                 if(!ccIns){
                         OspLog(LOG_LVL_ERROR,"[SendSignInCmd] can not find client instance\n");
                         printf("[SendSignInCmd] can not find client instance\n");
-                        return;
+                        return -1;
                 }
                 wAppId = ccIns->GetAppID();
                 if(ccIns->CurState() == CInstance::PENDING){
@@ -224,17 +249,20 @@ API void SendSignInCmd(){
         }
         if(!bPendingFlag){
                 OspLog(LOG_LVL_ERROR,"[SendSignInCmd] max file uploaded arrived\n");
-                return;
+                return -2;
         }
 
         if(OSP_OK != ::OspPost(MAKEIID(wAppId,CInstance::DAEMON),SIGN_IN_CMD,
                         &tSinInfo,sizeof(tSinInfo))){
                OspLog(LOG_LVL_ERROR,"[SendSignInCmd] post error\n");
+               return -3;
         }
+        OspDelay(500);
+        return 0;
 }
 
 
-API void SendSignOutCmd(){
+API int SendSignOutCmd(){
 
         if(OSP_OK != ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::DAEMON),SIGN_OUT_CMD)){
                OspLog(LOG_LVL_ERROR,"[SendSignOutCmd] post error\n");
@@ -302,11 +330,21 @@ API void MultSendFileUploadCmd(){
 
 void CCInstance::FileUploadCmd(CMessage*const pMsg){
 
+        //连接和登陆状态由广播获得，若间隔太小则可能发生错误，调用的时候需要确保
+        if(!m_bConnectedFlag){
+                OspLog(LOG_LVL_ERROR,"[InstanceEntry]disconnected\n");
+                return;
+        }
+        if(!m_bSignFlag){
+                OspLog(SYS_LOG_LEVEL,"[FileReceiveUploadAck]did not sign in\n");
+                return;
+        }
+
         //未处理完状态，重新放入消息队列等待状态稳定
         if(emFileStatus >= STATUS_SEND_UPLOAD&&
                         emFileStatus <= STATUS_RECEIVE_REMOVE){
                 if(OSP_OK != post(MAKEIID(GetAppID(),GetInsID()),SEND_REMOVE_CMD
-                               ,NULL,0,g_dwdstNode)){
+                               ,NULL,0)){
                         OspLog(LOG_LVL_ERROR,"[FileUploadCmd] post error\n");
                 }
                 return;
@@ -349,7 +387,7 @@ void CCInstance::FileUploadCmd(CMessage*const pMsg){
         }
         rewind(file);
 
-        if(OSP_OK != post(MAKEIID(SERVER_APP_ID,CInstance::PENDING),FILE_SEND_UPLOAD
+        if(OSP_OK != post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON),FILE_SEND_UPLOAD
                        ,pMsg->content,pMsg->length,g_dwdstNode)){
                 OspLog(LOG_LVL_ERROR,"[FileUploadCmd] post error\n");
                 return;
@@ -360,8 +398,6 @@ void CCInstance::FileUploadCmd(CMessage*const pMsg){
 
 void CCInstance::SignInCmd(CMessage *const pMsg){
 
-        u8 server_ip[MAX_IP_LENGTH];
-        u16 server_port;
 
         if(!m_bConnectedFlag){
 #if 0
@@ -395,6 +431,8 @@ void CCInstance::SignInCmd(CMessage *const pMsg){
 }
 
 void CCInstance::SignInAck(CMessage * const pMsg){
+
+        int i;
 
         if(!m_bConnectedFlag){
                 OspLog(LOG_LVL_ERROR,"[SignInAck]disconnected\n");
@@ -450,6 +488,8 @@ void CCInstance::SignOutCmd(CMessage * const pMsg){
 
 void CCInstance::SignOutAck(CMessage * const pMsg){
 
+        int i;
+
         if(!m_bConnectedFlag){
                 OspLog(LOG_LVL_ERROR,"[SignOutAck]disconnected\n");
                 return;
@@ -462,7 +502,7 @@ void CCInstance::SignOutAck(CMessage * const pMsg){
                         return;
                 }
         }
-
+        
         OspLog(SYS_LOG_LEVEL,"[SignOutAck]sign out\n");
         printf("[SignOutAck]get sign out ack\n");
 }
@@ -595,8 +635,8 @@ void CCInstance::MsgProcessInit(){
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_OUT_ACK),&CCInstance::SignOutAck,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SIGN_IN_ACK),&CCInstance::SignInAck,&m_tCmdDaemonChain);
 
-        RegMsgProFun(MAKEESTATE(IDLE_STATE,OSP_DISCONNECT),&CCInstance::DealDisconnect,&m_tCmdDaemonChain);
-        RegMsgProFun(MAKEESTATE(IDLE_STATE,MY_CONNECT),&CCInstance::notifyConnected,&m_tCmdDaemonChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,OSP_DISCONNECT),&CCInstance::notifyDisconnect,&m_tCmdDaemonChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,MY_CONNECT),&CCInstance::notifyConnect,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,MY_SIGNED),&CCInstance::notifySigned,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,MY_DISSIGNED),&CCInstance::notifyDissigned,&m_tCmdDaemonChain);
 
@@ -618,6 +658,11 @@ void CCInstance::MsgProcessInit(){
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_STABLE_REMOVE_ACK),&CCInstance::FileStableRemoveAck,
                         &m_tCmdChain);
 
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,GET_MY_CONNECT),&CCInstance::GetMyConnect,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,GET_DISCONNECT),&CCInstance::GetDisconnect,&m_tCmdChain);
+
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,GET_SIGNED),&CCInstance::GetSigned,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,GET_DISSIGNED),&CCInstance::GetDissigned,&m_tCmdChain);
 
         //直接返回不处理，调试信息完整，避免只返回can not find the EState
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SEND_CANCEL_CMD),&CCInstance::CancelCmd,&m_tCmdChain);
@@ -701,6 +746,7 @@ void CCInstance::InstanceEntry(CMessage * const pMsg){
         u16 curEvent = pMsg->event;
         MsgProcess c_MsgProcess;
 
+#if 0
         if(!m_bConnectedFlag){
                 OspLog(LOG_LVL_ERROR,"[InstanceEntry]disconnected\n");
                 return;
@@ -709,6 +755,7 @@ void CCInstance::InstanceEntry(CMessage * const pMsg){
                 OspLog(SYS_LOG_LEVEL,"[FileReceiveUploadAck]sign out\n");
                 return;
         }
+#endif
 
         if(NULL == pMsg){
                 OspLog(LOG_LVL_ERROR,"[InstanceEntry] pMsg is NULL\n");
@@ -718,7 +765,8 @@ void CCInstance::InstanceEntry(CMessage * const pMsg){
         if(FindProcess(MAKEESTATE(curState,curEvent),&c_MsgProcess,m_tCmdChain)){
                 (this->*c_MsgProcess)(pMsg);
         }else{
-                OspLog(LOG_LVL_ERROR,"[InstanceEntry] can not find the EState\n");
+                OspLog(LOG_LVL_ERROR,"[InstanceEntry] can not find the EState,event:%d\nstate:%d\n"
+                                ,curEvent,curState);
                 printf("[InstanceEntry] can not find the EState\n");
         }
 
@@ -755,7 +803,7 @@ void CCInstance::RemoveCmd(CMessage* const pMsg){
         if(emFileStatus >= STATUS_SEND_UPLOAD&&
                         emFileStatus <= STATUS_RECEIVE_REMOVE){
                 if(OSP_OK != post(MAKEIID(GetAppID(),GetInsID()),SEND_REMOVE_CMD
-                               ,NULL,0,g_dwdstNode)){
+                               ,NULL,0)){
                         OspLog(LOG_LVL_ERROR,"[RemoveCmd] post error\n");
                 }
                 return;
@@ -788,7 +836,7 @@ void CCInstance::FileGoOnCmd(CMessage* const pMsg){
         if(emFileStatus >= STATUS_SEND_UPLOAD&&
                         emFileStatus <= STATUS_RECEIVE_REMOVE){
                 if(OSP_OK != post(MAKEIID(GetAppID(),GetInsID()),FILE_GO_ON_CMD
-                               ,NULL,0,g_dwdstNode)){
+                               ,NULL,0)){
                         OspLog(LOG_LVL_ERROR,"[RemoveCmd] post error\n");
                 }
                 return;
@@ -847,7 +895,7 @@ void CCInstance::CancelCmd(CMessage* const pMsg){
         if(emFileStatus >= STATUS_SEND_UPLOAD&&
                         emFileStatus <= STATUS_RECEIVE_REMOVE){
                 if(OSP_OK != post(MAKEIID(GetAppID(),GetInsID()),SEND_CANCEL_CMD
-                               ,NULL,0,g_dwdstNode)){
+                               ,NULL,0)){
                         OspLog(LOG_LVL_ERROR,"[CancelCmd] post error\n");
                 }
                 return;
@@ -908,11 +956,24 @@ void CCInstance::FileStableRemoveAck(CMessage* const pMsg){
         printf("file remove\n");
 }
 
-void CCInstance::DealDisconnect(CMessage* const pMsg){
+void CCInstance::notifyDisconnect(CMessage* const pMsg){
 
         //TODO:断开之后状态需要回收
         m_bConnectedFlag = false;
         m_bSignFlag = false;
+
+        if(OSP_OK != post(MAKEIID(GetAppID(),CLIENT_INSTANCE_ID),GET_DISCONNECT
+                       ,NULL,0)){
+                OspLog(LOG_LVL_ERROR,"[notifyDisConnect] post error\n");
+        }
+}
+
+void CCInstance::GetDisconnect(CMessage* const pMsg){
+
+        //TODO:断开之后状态需要回收
+        m_bConnectedFlag = false;
+        m_bSignFlag = false;
+
         //TODO：断点续传
         if(file){
                 if(fclose(file) == 0){
@@ -930,23 +991,52 @@ void CCInstance::DealDisconnect(CMessage* const pMsg){
         m_wFileSize = 0;
         m_wUploadFileSize = 0;
         //m_wServerPort = SERVER_PORT;
-        OspLog(SYS_LOG_LEVEL,"[DealDisconnect]disconnected\n");
+        OspLog(SYS_LOG_LEVEL,"[notifyDisconnect]disconnected\n");
 }
 
-void CCInstance::notifyConnected(CMessage* const pMsg){
+void CCInstance::notifyConnect(CMessage* const pMsg){
 
         m_bConnectedFlag = true;
-        OspLog(SYS_LOG_LEVEL,"[ServerConnected]server connected\n");
+        if(OSP_OK != post(MAKEIID(GetAppID(),CLIENT_INSTANCE_ID),GET_MY_CONNECT
+                       ,NULL,0)){
+                OspLog(LOG_LVL_ERROR,"[notifyConnect] post error\n");
+        }
+}
+
+void CCInstance::GetMyConnect(CMessage* const pMsg){
+
+        m_bConnectedFlag = true;
+        OspLog(SYS_LOG_LEVEL,"[GetMyConnect]server connected\n");
 }
 
 void CCInstance::notifySigned(CMessage* const pMsg){
 
         m_bSignFlag = true;
+        if(OSP_OK != post(MAKEIID(GetAppID(),CLIENT_INSTANCE_ID),GET_SIGNED
+                       ,NULL,0)){
+                OspLog(LOG_LVL_ERROR,"[notifySigned] post error\n");
+        }
+
         OspLog(SYS_LOG_LEVEL,"[notifySigned]sign in\n");
+}
+
+void CCInstance::GetSigned(CMessage* const pMsg){
+
+        m_bSignFlag = true;
+}
+
+void CCInstance::GetDissigned(CMessage* const pMsg){
+
+        m_bSignFlag = false;
 }
 
 void CCInstance::notifyDissigned(CMessage* const pMsg){
 
         m_bSignFlag = false;
+        if(OSP_OK != post(MAKEIID(GetAppID(),CLIENT_INSTANCE_ID),GET_DISSIGNED
+                       ,NULL,0)){
+                OspLog(LOG_LVL_ERROR,"[notifyConnect] post error\n");
+        }
+
         OspLog(SYS_LOG_LEVEL,"[notifyDissigned]sign out\n");
 }

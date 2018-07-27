@@ -48,6 +48,16 @@
 #define SIGN_IN_CMD                    (EV_CLIENT_TEST_BGN+29)
 #define MY_CONNECT                     (EV_CLIENT_TEST_BGN+30)
 
+
+#define MY_SIGNED                      (EV_CLIENT_TEST_BGN+32)
+#define MY_DISSIGNED                   (EV_CLIENT_TEST_BGN+33)
+
+#define GET_MY_CONNECT                 (EV_CLIENT_TEST_BGN+34)
+#define GET_DISCONNECT                 (EV_CLIENT_TEST_BGN+35)
+
+#define GET_SIGNED                     (EV_CLIENT_TEST_BGN+36)
+#define GET_DISSIGNED                  (EV_CLIENT_TEST_BGN+37)
+
 typedef struct tagSinInfo{
         s8 Username[AUTHORIZATION_NAME_SIZE];
         s8 Passwd[AUTHORIZATION_NAME_SIZE];
@@ -103,8 +113,8 @@ private:
         FILE *file;
 public:
         CCInstance(): m_dwDisInsID(0),file(NULL),m_wFileSize(0)
-                     ,m_wUploadFileSize(0)，m_bConnectedFlag(false),
-                     ,m_tCmdChain(NULL),m_bSignedFlag(false),
+                     ,m_wUploadFileSize(0),m_bConnectedFlag(false)
+                     ,m_tCmdChain(NULL)
                      ,m_tCmdDaemonChain(NULL),emFileStatus(STATUS_INIT)
                      ,m_wServerPort(SERVER_PORT){
                 memset(file_name_path,0,sizeof(u8)*MAX_FILE_NAME_LENGTH);
@@ -144,11 +154,15 @@ public:
         void FileGoOnAck(CMessage* const);
         void FileStableRemoveAck(CMessage* const);
 
-        void notifyConnected(CMessage* const);
+        void notifyConnect(CMessage* const);
         void notifySigned(CMessage* const);
         void notifyDissigned(CMessage* const);
+        void GetDisconnect(CMessage* const);
+        void GetMyConnect(CMessage* const);
+        void GetSigned(CMessage* const);
+        void GetDissigned(CMessage* const);
         //断链检测处理函数
-        void DealDisconnect(CMessage* const);
+        void notifyDisconnect(CMessage* const);
 
 
 };
