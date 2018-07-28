@@ -1,6 +1,8 @@
 #include"osp.h"
 #include"commondemo.h"
 
+#define MULTY_APP                0
+#define SINGLE_APP               1
 
 #define RUNNING_STATE                 (1)
 #define IDLE_STATE                    (0)
@@ -24,7 +26,12 @@
 #define BUFFER_SIZE                   (u16)1
 #endif
 #define MAX_FILE_NAME_LENGTH         200
+
+#if MULTY_APP
+
 #define CLIENT_INSTANCE_NUM          1
+
+#endif
 
 #define CLIENT_INSTANCE_ID           1
 
@@ -46,17 +53,22 @@
 #define FILE_STABLE_REMOVE_ACK         (EV_CLIENT_TEST_BGN+28)
 
 #define SIGN_IN_CMD                    (EV_CLIENT_TEST_BGN+29)
+
+#if MULTY_APP
+
 #define MY_CONNECT                     (EV_CLIENT_TEST_BGN+30)
-
-
 #define MY_SIGNED                      (EV_CLIENT_TEST_BGN+32)
 #define MY_DISSIGNED                   (EV_CLIENT_TEST_BGN+33)
-
 #define GET_MY_CONNECT                 (EV_CLIENT_TEST_BGN+34)
 #define GET_DISCONNECT                 (EV_CLIENT_TEST_BGN+35)
-
 #define GET_SIGNED                     (EV_CLIENT_TEST_BGN+36)
 #define GET_DISSIGNED                  (EV_CLIENT_TEST_BGN+37)
+
+#endif
+
+#define FILE_UPLOAD_CMD_DEAL           (EV_CLIENT_TEST_BGN+38)
+#define SEND_CANCEL_CMD_DEAL           (EV_CLIENT_TEST_BGN+39)
+
 
 typedef struct tagSinInfo{
         s8 Username[AUTHORIZATION_NAME_SIZE];
@@ -103,8 +115,10 @@ private:
         EM_FILE_STATUS emFileStatus;
         u8          m_byServerIp[MAX_IP_LENGTH];
         u16         m_wServerPort;
+#if MULTY_APP
         bool        m_bConnectedFlag;    //避免使用线程锁，将全局变量改为成员变量
         bool        m_bSignFlag;         //避免使用线程锁，将全局变量改为成员变量
+#endif
 private:
         void InstanceEntry(CMessage *const);
         void DaemonInstanceEntry(CMessage *const,CApp*);
@@ -113,7 +127,11 @@ private:
         FILE *file;
 public:
         CCInstance(): m_dwDisInsID(0),file(NULL),m_wFileSize(0)
-                     ,m_wUploadFileSize(0),m_bConnectedFlag(false)
+                     ,m_wUploadFileSize(0)
+#if MULTY_APP
+                     ,m_bConnectedFlag(false)
+                     ,m_bSignFlag(false)
+#endif
                      ,m_tCmdChain(NULL)
                      ,m_tCmdDaemonChain(NULL),emFileStatus(STATUS_INIT)
                      ,m_wServerPort(SERVER_PORT){
@@ -153,18 +171,27 @@ public:
         void FileGoOnCmd(CMessage* const);
         void FileGoOnAck(CMessage* const);
         void FileStableRemoveAck(CMessage* const);
+        void FileUploadCmdDeal(CMessage* const);
+        void SendCancelCmdDeal(CMessage* const);
+        void CancelCmdDeal(CMessage* const);
 
+#if MULTY_APP
+        void GetDisconnect(CMessage* const);
         void notifyConnect(CMessage* const);
+        void GetMyConnect(CMessage* const);
         void notifySigned(CMessage* const);
         void notifyDissigned(CMessage* const);
-        void GetDisconnect(CMessage* const);
-        void GetMyConnect(CMessage* const);
-        void GetSigned(CMessage* const);
         void GetDissigned(CMessage* const);
+        void GetSigned(CMessage* const);
+#endif
         //断链检测处理函数
         void notifyDisconnect(CMessage* const);
 
 
 };
 
+#if MULTY_APP
 typedef zTemplate<CCInstance,CLIENT_INSTANCE_NUM,CAppNoData,MAX_ALIAS_LENGTH> CCApp;
+#else
+typedef zTemplate<CCInstance,MAX_INS_NUM,CAppNoData,MAX_ALIAS_LENGTH> CCApp;
+#endif
