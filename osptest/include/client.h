@@ -50,7 +50,7 @@
 
 
 #define FILE_STABLE_REMOVE             (EV_CLIENT_TEST_BGN+27)
-#define FILE_STABLE_REMOVE_ACK         (EV_CLIENT_TEST_BGN+28)
+//#define FILE_STABLE_REMOVE_ACK         (EV_CLIENT_TEST_BGN+28)
 
 #define SIGN_IN_CMD                    (EV_CLIENT_TEST_BGN+29)
 
@@ -69,6 +69,8 @@
 #define FILE_UPLOAD_CMD_DEAL           (EV_CLIENT_TEST_BGN+38)
 #define SEND_CANCEL_CMD_DEAL           (EV_CLIENT_TEST_BGN+39)
 #define FILE_GO_ON_CMD_DEAL            (EV_CLIENT_TEST_BGN+40)
+#define SEND_REMOVE_CMD_DEAL           (EV_CLIENT_TEST_BGN+41)
+#define SEND_STABLE_REMOVE_CMD_DEAL    (EV_CLIENT_TEST_BGN+42)
 
 
 typedef struct tagSinInfo{
@@ -171,11 +173,12 @@ public:
         void FileRemoveAck(CMessage* const);
         void FileGoOnCmd(CMessage* const);
         void FileGoOnAck(CMessage* const);
-        void FileStableRemoveAck(CMessage* const);
         void FileUploadCmdDeal(CMessage* const);
         void SendCancelCmdDeal(CMessage* const);
         void CancelCmdDeal(CMessage* const);
         void FileGoOnCmdDeal(CMessage* const);
+        void RemoveCmdDeal(CMessage* const);
+        void StableRemoveCmdDeal(CMessage* const);
 
 #if MULTY_APP
         void GetDisconnect(CMessage* const);
