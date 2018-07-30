@@ -8,7 +8,7 @@
 
 #define SERVER_DELAY             1000
 #define CREATE_TCP_NODE_TIMES     20
-#define MY_FILE_NAME             "osptest.linux"
+#define MY_FILE_NAME             "mydoc.7z"
 
 #if 0
 #define MAX_CMD_REPEAT_TIMES     5
@@ -52,8 +52,15 @@ typedef struct tagFileList{
         u8                     FileName[MAX_FILE_NAME_LENGTH];
         EM_FILE_STATUS         FileStatus;
         u16                    DealInstance;
-	u32                    UploadFileSize;
+        u32                    UploadFileSize;
 }TFileList;
+
+typedef struct tagDemoInfo{
+        u32                    srcid;
+        s8                     FileName[MAX_FILE_NAME_LENGTH];
+        u32                    UploadFileSize;
+}TDemoInfo;
+
 
 static bool CheckFileIn(LPCSTR filename,TFileList **tFile);
 
@@ -941,7 +948,7 @@ void CCInstance::MsgProcessInit(){
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,SEND_REMOVE_CMD),&CCInstance::RemoveCmd,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SEND_REMOVE_CMD),&CCInstance::RemoveCmd,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,SEND_CANCEL_CMD_DEAL),&CCInstance::CancelCmdDeal,&m_tCmdChain);
-        RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_GO_ON_CMD_DEAL),&CCInstance::FileGoOnCmdDeal,&m_tCmdChain);
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_GO_ON_CMD_DEAL),&CCInstance::FileGoOnCmdDeal,&m_tCmdChain);
 
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_UPLOAD_ACK),&CCInstance::FileUploadAck,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_FINISH_ACK),&CCInstance::FileFinishAck,&m_tCmdChain);
@@ -1219,27 +1226,30 @@ void CCInstance::CancelCmd(CMessage* const pMsg){
 
 void CCInstance::FileGoOnCmd(CMessage* const pMsg){
 
-        TFileList *tFile;
+    TFileList *tFile;
+    TDemoInfo tDemoInfo;
 	u16 i;
 	CCInstance *ccIns;
 	bool bPendingFlag = false;
 
-        if(!g_bSignFlag){
-                OspLog(SYS_LOG_LEVEL,"[FileGoOnCmd]did not sign in\n");
-                return;
-        }
 
-        if(!pMsg->content || pMsg->length <= 0){
-                 OspLog(LOG_LVL_ERROR,"[FileGoOnCmd]Msg is NULL\n");
-                 printf("[FileGoOnCmd]msg is null\n");
-                 return;
-        }
+    if(!g_bSignFlag){
+            OspLog(SYS_LOG_LEVEL,"[FileGoOnCmd]did not sign in\n");
+            return;
+    }
 
-        if(!CheckFileIn((LPCSTR)pMsg->content,&tFile)){
-                OspLog(LOG_LVL_ERROR,"[FileGoOnCmd]file not in list\n");//客户端文件状态错误？
-                //TODO:error deal
-                return;
-        }
+    if(!pMsg->content || pMsg->length <= 0){
+             OspLog(LOG_LVL_ERROR,"[FileGoOnCmd]Msg is NULL\n");
+             printf("[FileGoOnCmd]msg is null\n");
+             return;
+    }
+
+    if(!CheckFileIn((LPCSTR)pMsg->content,&tFile)){
+            OspLog(LOG_LVL_ERROR,"[FileGoOnCmd]file not in list\n");//客户端文件状态错误？
+            //TODO:error deal
+            return;
+    }
+
 	if(tFile->FileStatus != STATUS_CANCELLED){
                 OspLog(LOG_LVL_ERROR,"[FileGoOnCmd]file upload not cancelled\n");
 		return;
@@ -1247,29 +1257,29 @@ void CCInstance::FileGoOnCmd(CMessage* const pMsg){
 
         //查询空闲Instance
 
-        for(i = 0;i < MAX_INS_NUM;i++){
-                ccIns = (CCInstance*)((CApp*)(&g_cCApp))->GetInstance(CLIENT_INSTANCE_ID+i);
-                if(!ccIns){
-                        OspLog(LOG_LVL_ERROR,"[FileGoOnCmd]get error instance\n");
-                        return;
-                }
-                if(ccIns->CurState() == CInstance::PENDING){
-                        bPendingFlag = true;
-                        break;
-                }
-        }
-        if(!bPendingFlag){
-                OspLog(SYS_LOG_LEVEL, "[FileGoOnCmd]no pending instance,please wait...\n");
-                return;
-        }
-
-
-        if(OSP_OK != post(MAKEIID(CLIENT_APP_ID,ccIns->GetInsID()),FILE_GO_ON_CMD_DEAL
-                       ,&tFile->UploadFileSize,sizeof(u32))){
-                OspLog(LOG_LVL_ERROR,"[FileGoOnCmd] post error\n");
-                //TODO:状态回收
-                return;
-        }
+    for(i = 0;i < MAX_INS_NUM;i++){
+            ccIns = (CCInstance*)((CApp*)(&g_cCApp))->GetInstance(CLIENT_INSTANCE_ID+i);
+            if(!ccIns){
+                    OspLog(LOG_LVL_ERROR,"[FileGoOnCmd]get error instance\n");
+                    return;
+            }
+            if(ccIns->CurState() == CInstance::PENDING){
+                    bPendingFlag = true;
+                    break;
+            }
+    }
+    if(!bPendingFlag){
+            OspLog(SYS_LOG_LEVEL, "[FileGoOnCmd]no pending instance,please wait...\n");
+            return;
+    }
+    strcpy((LPSTR)tDemoInfo.FileName,(LPCSTR)tFile->FileName);
+    tDemoInfo.UploadFileSize = tFile->UploadFileSize;
+    if(OSP_OK != post(MAKEIID(CLIENT_APP_ID,ccIns->GetInsID()),FILE_GO_ON_CMD_DEAL
+                   ,&tDemoInfo,sizeof(tDemoInfo))){
+            OspLog(LOG_LVL_ERROR,"[FileGoOnCmd] post error\n");
+            //TODO:状态回收
+            return;
+    }
 }
 
 
@@ -1343,18 +1353,22 @@ void CCInstance::CancelCmdDeal(CMessage* const pMsg){
 
 void CCInstance::FileGoOnCmdDeal(CMessage* const pMsg){
 
+        TDemoInfo *tDemoInfo;
+
+        tDemoInfo = (TDemoInfo*)pMsg->content;
         if(!g_bSignFlag){
                 OspLog(SYS_LOG_LEVEL,"[FileGoOnCmdDeal]did not sign in\n");
                 return;
         }
         if(OSP_OK != post(MAKEIID(SERVER_APP_ID,DAEMON),FILE_GO_ON
-                       ,NULL,0,g_dwdstNode)){
+                       ,tDemoInfo->FileName,strlen(tDemoInfo->FileName)+1,g_dwdstNode)){
                 OspLog(LOG_LVL_ERROR,"[FileGoOnCmdDeal] post error\n");
                 return;
         }
-	m_wUploadFileSize = *(u32*)pMsg->content;
 
+        m_wUploadFileSize = tDemoInfo->UploadFileSize;
         emFileStatus = STATUS_SEND_CANCEL;
+        NextState(RUNNING_STATE);
 }
 
 void CCInstance::FileGoOnAck(CMessage* const pMsg){
@@ -1378,7 +1392,7 @@ void CCInstance::FileGoOnAck(CMessage* const pMsg){
                  return;
         }
 
-	m_dwDisInsID = pMsg->srcid;
+        m_dwDisInsID = pMsg->srcid;
         buffer_size = fread(buffer,1,sizeof(s8)*BUFFER_SIZE,file);
         if(ferror(file)){
                 if(fclose(file) == 0){
@@ -1501,8 +1515,19 @@ void CCInstance::notifyDisconnect(CMessage* const pMsg){
                 OspLog(LOG_LVL_ERROR,"[notifyDisConnect] post error\n");
         }
 #else
+        struct list_head *tFileHead;
+        TFileList *tnFile;
+
         g_bConnectedFlag = false;
         g_bSignFlag = false;
+
+        //TODO:需要修改
+        list_for_each(tFileHead,&tFileList){
+                tnFile = list_entry(tFileHead,TFileList,tListHead);
+                free(tnFile);
+        }
+        list_del_init(tFileHead);
+
 #endif
 }
 
@@ -1600,5 +1625,30 @@ static bool CheckFileIn(LPCSTR filename,TFileList **tFile){
                 *tFile = tnFile;
         }
         return inFileList;
+}
+
+static CCInstance* GetPendingIns(){
+
+       u16 instCount;
+       CCInstance* pIns;
+
+       g_cCApp.wLastIdleInstID %= MAX_INS_NUM;
+	   instCount = g_cCApp.wLastIdleInstID;
+	   do{
+               instCount++;
+               pIns = (CCInstance*)((CApp*)&g_cCApp)->GetInstance(instCount);
+               if( pIns->CurState() == CInstance::PENDING ) {
+                    break;
+               }
+               instCount %= MAX_INS_NUM;
+	   } while( instCount != g_cCApp.wLastIdleInstID );
+
+	   if( instCount == g_cCApp.wLastIdleInstID ){
+               //TODO:通知客户端，没有找到空闲实例
+               return NULL;
+       }
+	   g_cCApp.wLastIdleInstID = instCount;
+       return pIns;
+
 }
 
