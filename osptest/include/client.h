@@ -149,7 +149,7 @@ public:
         ~CCInstance(){
                 NodeChainEnd();
                 if(file){
-                        close(file);
+                        fclose(file);
                 }
         }
         void MsgProcessInit();
