@@ -16,7 +16,7 @@
 #define SIGN_STATUS_OUT               (0)
 #define AUTHORIZATION_NAME_SIZE       (20)
 #define MAX_IP_LENGTH                 (16)
-#define SERVER_IP                    "172.16.236.241"
+#define SERVER_IP                    "127.0.0.1"
 #define SERVER_PORT                  ((u16)20000)
 
 
@@ -68,6 +68,7 @@
 
 #define FILE_UPLOAD_CMD_DEAL           (EV_CLIENT_TEST_BGN+38)
 #define SEND_CANCEL_CMD_DEAL           (EV_CLIENT_TEST_BGN+39)
+#define FILE_GO_ON_CMD_DEAL            (EV_CLIENT_TEST_BGN+40)
 
 
 typedef struct tagSinInfo{
@@ -174,6 +175,7 @@ public:
         void FileUploadCmdDeal(CMessage* const);
         void SendCancelCmdDeal(CMessage* const);
         void CancelCmdDeal(CMessage* const);
+        void FileGoOnCmdDeal(CMessage* const);
 
 #if MULTY_APP
         void GetDisconnect(CMessage* const);
