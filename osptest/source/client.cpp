@@ -15,6 +15,7 @@
 #endif
 
 API void Test_DisConnect();
+API void Test_Cancel();
 API void Connect2Server();
 #if MULTY_APP
 API int SendSignInCmd();
@@ -151,6 +152,7 @@ int main(){
 #endif
 
 #ifdef _LINUX_
+        OspRegCommand("tcancel",(void*)Test_Cancel,"");
         OspRegCommand("tdisconnect",(void*)Test_DisConnect,"");
         OspRegCommand("Connect",(void*)Connect2Server,"");
         OspRegCommand("DisConnect",(void*)Disconnect2Server,"");
@@ -180,7 +182,7 @@ int main(){
 #if MULTY_APP
                 for(i = 0;i < CLIENT_APP_SUM;i++){
                         //断链注册
-                        if(OSP_OK !=OspNodeDiscCBRegQ(g_dwdstNode,i+CLIENT_APP_ID,CInstance::DAEMON)){
+                        if(OSP_OK !=OspNodeDiscCBReg(g_dwdstNode,i+CLIENT_APP_ID,CInstance::DAEMON)){
                             OspLog(LOG_LVL_ERROR,"[main]regis disconnect error\n");
                             return -1;
                         }
@@ -194,7 +196,7 @@ int main(){
                 }
 #else
                 //断链注册
-                if(OSP_OK !=OspNodeDiscCBRegQ(g_dwdstNode,CLIENT_APP_ID,CInstance::DAEMON)){
+                if(OSP_OK !=OspNodeDiscCBReg(g_dwdstNode,CLIENT_APP_ID,CInstance::DAEMON)){
                     OspLog(LOG_LVL_ERROR,"[main]regis disconnect error\n");
                     return -1;
                 }
@@ -218,6 +220,16 @@ int main(){
         return 0;
 }
 
+
+API void Test_Cancel(){
+
+        Connect2Server();
+        OspDelay(500);
+        SendSignInCmd();
+        OspDelay(500);
+        SendFileUploadCmd();
+        SendCancelCmd();
+}
 
 API void Test_DisConnect(){
 
@@ -261,7 +273,7 @@ API void Connect2Server(){
         //断链注册
         for(i = 0;i < CLIENT_APP_SUM;i++){
                 //断链注册
-                if(OSP_OK !=OspNodeDiscCBRegQ(g_dwdstNode,i+CLIENT_APP_ID,CInstance::DAEMON)){
+                if(OSP_OK !=OspNodeDiscCBReg(g_dwdstNode,i+CLIENT_APP_ID,CInstance::DAEMON)){
                     OspLog(LOG_LVL_ERROR,"[main]regis disconnect error\n");
                     return;
                 }
@@ -275,7 +287,7 @@ API void Connect2Server(){
         }
 #else
         //断链注册
-        if(OSP_OK !=OspNodeDiscCBRegQ(g_dwdstNode,CLIENT_APP_ID,CInstance::DAEMON)){
+        if(OSP_OK !=OspNodeDiscCBReg(g_dwdstNode,CLIENT_APP_ID,CInstance::DAEMON)){
             OspLog(LOG_LVL_ERROR,"[main]regis disconnect error\n");
             return;
         }
@@ -463,7 +475,7 @@ API void MultSendFileUploadCmd(){
 void CCInstance::FileUploadCmd(CMessage*const pMsg){
 
         CCInstance *ccIns;
-        TFileList *tnFile;
+        TFileList *tnFile = NULL;
 #if 0
         if(!m_bConnectedFlag){
                 OspLog(LOG_LVL_ERROR,"[InstanceEntry]disconnected\n");
@@ -510,6 +522,20 @@ void CCInstance::FileUploadCmd(CMessage*const pMsg){
         //立刻将该Instance状态设置为RUNNING，防止因为立刻调用其他处理导致该instance
         //被其他任务(业务)查询之后调用
         ccIns->m_curState = RUNNING_STATE;
+
+        if(!tnFile){
+            tnFile = new TFileList();
+            if(!tnFile){
+                OspLog(LOG_LVL_ERROR,"[FileUploadCmd]file list item malloc failed\n");
+                //TODO：状态回收
+                return;
+            }
+            strcpy((LPSTR)tnFile->FileName,(LPSTR)pMsg->content);
+            tnFile->FileStatus = STATUS_SEND_UPLOAD;
+            tnFile->DealInstance = ccIns->GetInsID();
+            tnFile->FileStatus = STATUS_UPLOAD_CMD;
+            list_add(&tnFile->tListHead,&tFileList);
+        }
 
 
 #if MULTY_APP
@@ -612,6 +638,7 @@ void CCInstance::FileUploadCmdDeal(CMessage *const pMsg){
         }
 
         
+#if 0
         //文件注册
 #if THREAD_SAFE_MALLOC
         tFile = (TFileList*)malloc(sizeof(TFileList));
@@ -627,6 +654,14 @@ void CCInstance::FileUploadCmdDeal(CMessage *const pMsg){
         tFile->FileStatus = STATUS_SEND_UPLOAD;
         tFile->DealInstance = GetInsID();
         list_add(&tFile->tListHead,&tFileList);
+
+#endif
+        if(!CheckFileIn((LPCSTR)file_name_path,&tFile)){
+                OspLog(LOG_LVL_ERROR,"[FileUploadCmd]file not in list\n");//客户端文件状态错误？
+                //TODO:error deal
+                return;
+        }
+        tFile->FileStatus = STATUS_SEND_UPLOAD;
 
         emFileStatus = STATUS_SEND_UPLOAD;
         NextState(RUNNING_STATE);
@@ -911,7 +946,7 @@ void CCInstance::FileUploadAck(CMessage* const pMsg){
                      return;
                 }
         }else{
-                OspLog(LOG_LVL_ERROR,"[FileUploadAck]get incorrect file status\n");
+                OspLog(LOG_LVL_ERROR,"[FileUploadAck]get incorrect file status:%d\n",emFileStatus);
                 printf("[FileUploadAck]get incorrect file status\n");
         }
 }
@@ -1113,7 +1148,7 @@ void CCInstance::InstanceEntry(CMessage * const pMsg){
         if(FindProcess(MAKEESTATE(curState,curEvent),&c_MsgProcess,m_tCmdChain)){
                 (this->*c_MsgProcess)(pMsg);
         }else{
-                OspLog(LOG_LVL_ERROR,"[InstanceEntry] can not find the EState,event:%d\nstate:%d\n"
+                OspLog(LOG_LVL_ERROR,"[InstanceEntry] can not find the EState,event:%d,state:%d\n"
                                 ,curEvent,curState);
                 printf("[InstanceEntry] can not find the EState\n");
         }
@@ -1134,7 +1169,8 @@ void CCInstance::DaemonInstanceEntry(CMessage *const pMsg,CApp *pCApp){
         if(FindProcess(MAKEESTATE(curState,curEvent),&c_MsgProcess,m_tCmdDaemonChain)){
                 (this->*c_MsgProcess)(pMsg);
         }else{
-                OspLog(LOG_LVL_ERROR,"[DaemonInstanceEntry] can not find the EState\n");
+                OspLog(LOG_LVL_ERROR,"[DaemonInstanceEntry] can not find the EState,event:%d,state:%d\n"
+                                ,curEvent,curState);
                 printf("[DaemonInstanceEntry] can not find the EState\n");
         }
 }
@@ -1158,7 +1194,7 @@ void CCInstance::RemoveCmdDeal(CMessage* const pMsg){
             OspLog(LOG_LVL_ERROR,"[RemoveCmdDeal]file status error\n");
             return;
     }
-    if(OSP_OK != post(MAKEIID(SERVER_APP_ID,tFile->DealInstance),SEND_REMOVE
+    if(OSP_OK != post(m_dwDisInsID,SEND_REMOVE
                    ,NULL,0,g_dwdstNode)){
             OspLog(LOG_LVL_ERROR,"[RemoveCmdDeal] post error\n");
             return;
@@ -1172,7 +1208,7 @@ void CCInstance::StableRemoveCmdDeal(CMessage* const pMsg){
     TFileList *tFile;
 
     if(!g_bSignFlag){
-            OspLog(SYS_LOG_LEVEL,"[FileGoOnCmd]did not sign in\n");
+            OspLog(SYS_LOG_LEVEL,"[StableRemoveCmdDeal]did not sign in\n");
             return;
     }
 
@@ -1193,6 +1229,7 @@ void CCInstance::StableRemoveCmdDeal(CMessage* const pMsg){
             return;
     }
 
+    strcpy((LPSTR)file_name_path,(LPCSTR)pMsg->content);
     emFileStatus = STATUS_SEND_REMOVE;
     //tFile->FileStatus = STATUS_SEND_REMOVE;
     NextState(RUNNING_STATE);
@@ -1362,6 +1399,17 @@ void CCInstance::FileGoOnCmd(CMessage* const pMsg){
             return;
     }
 
+#if 0
+    if(tFile->FileStatus >= STATUS_UPLOAD_CMD
+                    && tFile->FileStatus <= STATUS_RECEIVE_REMOVE){
+                if(OSP_OK != post(MAKEIID(GetAppID(),GetInsID()),SEND_CANCEL_CMD
+                               ,NULL,0)){
+                        OspLog(LOG_LVL_ERROR,"[FileGoOnCmd] post error\n");
+                }
+                return;
+
+    }
+#endif
     //TODO：配合文件表追踪，需要修改
 	if(tFile->FileStatus != STATUS_CANCELLED){
                 OspLog(LOG_LVL_ERROR,"[FileGoOnCmd]file upload not cancelled\n");
@@ -1406,6 +1454,17 @@ void CCInstance::CancelCmd(CMessage* const pMsg){
                 OspLog(LOG_LVL_ERROR,"[CancelCmd]file not in list\n");//客户端文件状态错误？
                 //TODO:error deal
                 return;
+        }
+
+        if(tFile->FileStatus >= STATUS_UPLOAD_CMD
+                        && tFile->FileStatus <= STATUS_RECEIVE_REMOVE){
+                    OspDelay(500);
+                    if(OSP_OK != post(MAKEIID(GetAppID(),GetInsID()),SEND_CANCEL_CMD
+                                   ,pMsg->content,pMsg->length)){
+                            OspLog(LOG_LVL_ERROR,"[CancelCmd] post error\n");
+                    }
+                    return;
+
         }
 
         if(OSP_OK != post(MAKEIID(CLIENT_APP_ID,tFile->DealInstance),SEND_CANCEL_CMD_DEAL
@@ -1469,6 +1528,7 @@ void CCInstance::FileGoOnCmdDeal(CMessage* const pMsg){
                 return;
         }
 
+        strcpy((LPSTR)file_name_path,(LPCSTR)tDemoInfo->FileName);
         m_wUploadFileSize = tDemoInfo->UploadFileSize;
         emFileStatus = STATUS_SEND_CANCEL;
         NextState(RUNNING_STATE);
@@ -1596,7 +1656,8 @@ void CCInstance::FileRemoveAck(CMessage* const pMsg){
 void CCInstance::notifyDisconnect(CMessage* const pMsg){
 
         //TODO:断开之后状态需要回收
-
+        u16 i;
+        CCInstance *pIns;
 #if MULTY_APP
         m_bConnectedFlag = false;
         m_bSignFlag = false;
@@ -1609,10 +1670,14 @@ void CCInstance::notifyDisconnect(CMessage* const pMsg){
         struct list_head *tFileHead,*templist;
         TFileList *tnFile;
 
+        if(!g_bConnectedFlag){
+                OspLog(LOG_LVL_ERROR,"[notifyDisConnect] not connected\n");
+                return;
+        }
         g_bConnectedFlag = false;
         g_bSignFlag = false;
 
-        //TODO:需要修改
+        //TODO:断点续传
         list_for_each_safe(tFileHead,templist,&tFileList){
                 tnFile = list_entry(tFileHead,TFileList,tListHead);
 #if THREAD_SAFE_MALLOC
@@ -1622,8 +1687,25 @@ void CCInstance::notifyDisconnect(CMessage* const pMsg){
 #endif
         }
         list_del_init(tFileHead);
-        OspLog(SYS_LOG_LEVEL, "[notifyDisConnect]disconnect\n");
 
+        for(i = 1;i < MAX_INS_NUM;i++){
+               pIns = (CCInstance*)((CApp*)&g_cCApp)->GetInstance(i);
+               pIns->m_curState = CInstance::PENDING;
+               pIns->emFileStatus = STATUS_INIT;
+               if(!pIns->file){
+                       if(fclose(pIns->file) == 0){
+                               OspLog(SYS_LOG_LEVEL,"[notifyDisConnect]file closed\n");
+                               pIns->file = NULL;
+                       }else{
+                               OspLog(LOG_LVL_ERROR,"[notifyDisConnect]file close failed\n");
+                               return;
+                       }
+               }
+        }
+        if(OSP_OK != OspNodeDelDiscCB(g_dwdstNode,CLIENT_APP_ID,CInstance::DAEMON)){
+               OspLog(LOG_LVL_ERROR,"[notifyDisConnect]del discb failed\n");
+        }
+        OspLog(SYS_LOG_LEVEL, "[notifyDisConnect]disconnect\n");
 #endif
 }
 
@@ -1707,7 +1789,7 @@ void CCInstance::notifyDissigned(CMessage* const pMsg){
 static bool CheckFileIn(LPCSTR filename,TFileList **tFile){
 
         struct list_head *tFileHead;
-        TFileList *tnFile;
+        TFileList *tnFile = NULL;
         bool inFileList = false;
 
         list_for_each(tFileHead,&tFileList){

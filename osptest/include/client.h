@@ -81,17 +81,20 @@ typedef struct tagSinInfo{
 typedef enum tagEM_FILE_STATUS{
                 STATUS_INIT             = -1,
                 //processing state
-                STATUS_SEND_UPLOAD       = 0,
-                STATUS_SEND_CANCEL      = 1,
-                STATUS_SEND_REMOVE      = 2,
-                STATUS_RECEIVE_UPLOAD   = 3,
-                STATUS_RECEIVE_CANCEL   = 4,
-                STATUS_RECEIVE_REMOVE   = 5,
+                STATUS_UPLOAD_CMD       = 1,
+                STATUS_CANCEL_CMD       = 2,
+                STATUS_REMOVE_CMD       = 3,
+                STATUS_SEND_UPLOAD      = 4,
+                STATUS_SEND_CANCEL      = 5,
+                STATUS_SEND_REMOVE      = 6,
+                STATUS_RECEIVE_UPLOAD   = 7,
+                STATUS_RECEIVE_CANCEL   = 8,
+                STATUS_RECEIVE_REMOVE   = 9,
                 //stable state
-                STATUS_UPLOADING        = 6,
-                STATUS_CANCELLED        = 7,
-                STATUS_REMOVED          = 8,
-                STATUS_FINISHED         = 9 
+                STATUS_UPLOADING        = 10,
+                STATUS_CANCELLED        = 11,
+                STATUS_REMOVED          = 12,
+                STATUS_FINISHED         = 13
 }EM_FILE_STATUS;
 
 class CCInstance : public CInstance{
@@ -145,6 +148,9 @@ public:
         }
         ~CCInstance(){
                 NodeChainEnd();
+                if(file){
+                        close(file);
+                }
         }
         void MsgProcessInit();
         void NodeChainEnd();
