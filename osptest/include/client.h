@@ -83,7 +83,7 @@ typedef enum tagEM_FILE_STATUS{
                 //processing state
                 STATUS_UPLOAD_CMD       = 1,
                 STATUS_CANCEL_CMD       = 2,
-                STATUS_GO_ON_CMD         = 3,
+                STATUS_GO_ON_CMD        = 3,
                 STATUS_REMOVE_CMD       = 4,
                 STATUS_SEND_UPLOAD      = 5,
                 STATUS_SEND_CANCEL      = 6,
@@ -91,7 +91,7 @@ typedef enum tagEM_FILE_STATUS{
                 STATUS_SEND_REMOVE      = 8,
                 STATUS_RECEIVE_UPLOAD   = 9,
                 STATUS_RECEIVE_CANCEL   = 10,
-                STATUS_RECEIVE_GOON     = 11,
+                STATUS_RECEIVE_GO_ON     = 11,
                 STATUS_RECEIVE_REMOVE   = 12,
                 //stable state
                 STATUS_UPLOADING        = 13,
