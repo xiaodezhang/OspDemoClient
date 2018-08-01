@@ -9,6 +9,7 @@
 #define SERVER_DELAY             1000
 #define CREATE_TCP_NODE_TIMES     20
 #define MY_FILE_NAME             "mydoc.7z"
+#define NATIVE_IP                "127.0.0.1"
 
 #if 0
 #define MAX_CMD_REPEAT_TIMES     5
@@ -33,6 +34,7 @@ API void Disconnect2Server();
 static void UploadCmdSingle(const s8*);
 
 static u32 g_dwdstNode;
+static u32 g_dwGuiNode;
 #if SINGLE_APP
 bool        g_bConnectedFlag;    
 bool        g_bSignFlag;         
@@ -79,15 +81,16 @@ int main(){
 #endif
         s16 i,j;
         s8 chAppNum[APP_NUM_SIZE];
-        bool bCreateTcpNodeFlag = false;
 
 #if SINGLE_APP
         g_bConnectedFlag = false;
         g_bSignFlag      = false;
 #endif
+        u32 guiPort;
 
         if(!ret){
                 OspPrintf(1,0,"osp init fail\n");
+                return -1;
         }
 
         printf("demo client osp\n");
@@ -121,37 +124,6 @@ int main(){
         }
 #endif
 
-#if 1
-        //尝试多次建立node，支持本地多个客户端的副本
-        for(i = 0;i < CREATE_TCP_NODE_TIMES;i++){
-                if(INVALID_SOCKET != (ret = OspCreateTcpNode(0,OSP_AGENT_CLIENT_PORT+i*3))){
-                        bCreateTcpNodeFlag = true;
-                        break;
-                }
-        }
-        if(!bCreateTcpNodeFlag){
-                OspQuit();
-#if MULTY_APP
-                for(i = 0;i < CLIENT_APP_SUM;i++ ){
-                        delete(g_cCApp[i]);
-                }
-#endif
-                OspPrintf(1,0,"[main]create positive node failed,quit\n");
-                printf("[main]node created failed\n");
-                return -1;
-        }
-#else
-        ret = OspCreateTcpNode(0,OSP_AGENT_CLIENT_PORT);
-        if(INVALID_SOCKET == ret){
-                OspQuit();
-                for(i = 0;i < CLIENT_APP_SUM;i++ ){
-                        delete(g_cCApp[i]);
-                }
-                OspPrintf(1,0,"[main]create positive node failed,quit\n");
-                printf("[main]node created failed\n");
-                return -1;
-        }
-#endif
 
 #ifdef _LINUX_
         OspRegCommand("tcancel",(void*)Test_Cancel,"");
@@ -205,6 +177,17 @@ int main(){
 
                 g_bConnectedFlag = true;
 #endif
+        }
+        guiPort = DemoGuiInit();
+        if(guiPort < 0){
+                OspLog(LOG_LVL_ERROR,"[main]create native gui node failed\n");
+                return -1;
+        }
+
+        g_dwGuiNode = OspConnectTcpNode(inet_addr(NATIVE_IP),guiPort,10,3);
+        if(OSP_OK != g_dwGuiNode){
+                OspLog(LOG_LVL_ERROR,"[main]connect to native gui node failed\n");
+                return -1;
         }
 
         //文件表初始化
@@ -479,7 +462,7 @@ void CCInstance::FileUploadCmd(CMessage*const pMsg){
         TFileList *tnFile = NULL;
 #if 0
         if(!m_bConnectedFlag){
-                OspLog(LOG_LVL_ERROR,"[InstanceEntry]disconnected\n");
+                OspLog(LOG_LVL_ERROR,"[FileUploadCmd]disconnected\n");
                 return;
         }
 #endif
