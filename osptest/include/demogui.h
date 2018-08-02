@@ -10,6 +10,13 @@
 
 #define GUI_SIGN_IN_ACK                         (GUI_MSG_BASE+1)
 #define GUI_SIGN_OUT_ACK                        (GUI_MSG_BASE+2)
+#define GUI_FILE_SIZE_ACK                       (GUI_MSG_BASE+3)
+#define GUI_UPLOAD_FILE_SIZE_ACK                (GUI_MSG_BASE+4)
+#define GUI_DISCONNECT                          (GUI_MSG_BASE+5)
+#define GUI_FILE_UPLOAD_ACK                     (GUI_MSG_BASE+6)
+#define GUI_FILE_FINISHED_ACK                   (GUI_MSG_BASE+7)
+#define GUI_FILE_CANCEL_ACK                     (GUI_MSG_BASE+8)
+#define GUI_FILE_REMOVE_ACK                     (GUI_MSG_BASE+9)
 
 class GuiInstance : public CInstance{
 

@@ -122,17 +122,27 @@ void GuiInstance::DaemonInstanceEntry(CMessage *const pMsg,CApp* pApp){
 }
 
 void GetSignIn(CMessage* const pMsg){
-        printf("[GetSignIn]ack:%d\n",*(u16*)pMsg->content);
+        printf("[GetSignIn]ack:%d\n",*(s16*)pMsg->content);
 }
 
 void GetSignOut(CMessage* const pMsg){
-        printf("[GetSignOut]ack:%d\n",*(u16*)pMsg->content);
+        printf("[GetSignOut]ack:%d\n",*(s16*)pMsg->content);
+}
+
+void GetFileSize(CMessage* const pMsg){
+        printf("[GetFileSize]ack:%ld\n",*(u64*)pMsg->content);
+}
+
+void GetUploadFileSize(CMessage* const pMsg){
+//        printf("[GetUploadFileSize]ack:%ld\n",*(u64*)pMsg->content);
 }
 
 void msgProcessInit(){
 
         regProcess(MAKEESTATE(IDLE_STATE,GUI_SIGN_IN_ACK),GetSignIn,&TInsNodeHead);
         regProcess(MAKEESTATE(IDLE_STATE,GUI_SIGN_OUT_ACK),GetSignOut,&TInsNodeHead);
+        regProcess(MAKEESTATE(IDLE_STATE,GUI_FILE_SIZE_ACK),GetFileSize,&TInsNodeHead);
+        regProcess(MAKEESTATE(IDLE_STATE,GUI_UPLOAD_FILE_SIZE_ACK),GetUploadFileSize,&TInsNodeHead);
 }
 
 static TInsNode* findProcess(const u32 eventState,const struct list_head* tInsNodeHead){

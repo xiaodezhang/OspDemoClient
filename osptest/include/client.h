@@ -121,10 +121,10 @@ private:
         u8          file_name_path[MAX_FILE_NAME_LENGTH];
 
         s8          buffer[BUFFER_SIZE];
-        u32         m_wFileSize;           //因为fseek返回值为int，实际最大值为2G,fopen也有这样的限制，设置
+        u64         m_dwFileSize;           //因为fseek返回值为int，实际最大值为2G,fopen也有这样的限制，设置
                                            //_FILE_OFFSET_BITS == 64或者使用-D_FILE_OFFSET_BITS = 64可能会
                                            //增加限制值,64位系统不存在这样的问题。
-        u32         m_wUploadFileSize;
+        u64         m_dwUploadFileSize;
         EM_FILE_STATUS emFileStatus;
         u8          m_byServerIp[MAX_IP_LENGTH];
         u16         m_wServerPort;
@@ -139,8 +139,8 @@ private:
         tCmdNode *m_tCmdDaemonChain;
         FILE *file;
 public:
-        CCInstance(): m_dwDisInsID(0),file(NULL),m_wFileSize(0)
-                     ,m_wUploadFileSize(0)
+        CCInstance(): m_dwDisInsID(0),file(NULL),m_dwFileSize(0)
+                     ,m_dwUploadFileSize(0)
 #if MULTY_APP
                      ,m_bConnectedFlag(false)
                      ,m_bSignFlag(false)
