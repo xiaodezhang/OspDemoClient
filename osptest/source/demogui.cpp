@@ -3,11 +3,8 @@
 #include"list.h"
 #include"demogui.h"
 
-#define DEMO_GUI_LISTEN_PORT                    5000
-#define GUI_APP_ID                              (u16)4
-#define GUI_APP_PRI                             (u8)80
 
-typedef msgPorcess void (*process_fun)(CMessage*);
+typedef  void (*msgProcess)(CMessage*const);
 
 typedef struct tagInsNode{
         struct list_head        tListHead;
@@ -20,24 +17,36 @@ static GuiApp g_GuiApp;
 static struct list_head  TInsNodeHead;
 
 
-u32 DemoGuiInit(){
+static TInsNode* findProcess(const u32 eventState,const struct list_head* tInsNodeHead);
+static void regProcess(const u32 eventState,const msgProcess c_MsgProcess
+                                ,struct list_head* tInsNodeHead);
+static void delInsNode(struct list_head * tInsNodeHead);
 
-#if 0
+void msgProcessInit();
+
+int main(){
+
 #ifdef _MSC_VER
         int ret = OspInit(TRUE,2500,"WindowsOspClient");
 #else
         int ret = OspInit(TRUE,2500,"LinuxOspClient");
 #endif
         bool bCreateTcpNodeFlag = false;
+        u16 i;
 
         if(!ret){
                 OspPrintf(1,0,"osp init fail\n");
+                OspQuit();
                 return -1;
         }
-#endif
+
+        INIT_LIST_HEAD(&TInsNodeHead);
+        msgProcessInit();
 
         if(OSP_OK != g_GuiApp.CreateApp("GuiApp",GUI_APP_ID,GUI_APP_PRI,MAX_MSG_WAITING)){
-                OspLog(LOG_LVL_ERROR,"[DemoGuiInit]app create error\n");
+                OspLog(LOG_LVL_ERROR,"[main]app create error\n");
+                delInsNode(&TInsNodeHead);
+                OspQuit();
                 return -2;
         }
 
@@ -55,28 +64,94 @@ u32 DemoGuiInit(){
                 return -3;
         }
 
-        INIT_LIST_HEAD(&TInsNodeHead);
 
-        return OSP_AGENT_CLIENT_PORT+i*3;
+        if(0 != clientInit(DEMO_GUI_LISTEN_PORT+i*3)){
+                OspLog(LOG_LVL_ERROR,"[main]client init error\n");
+                delInsNode(&TInsNodeHead);
+                OspQuit();
+                return -1;
+        }
+
+        while(1)
+                OspDelay(100);
+
+        delInsNode(&TInsNodeHead);
+        OspQuit();
+
+        return 0;
 }
 
-static TInsNode* findProcess(const TInsNode* tInsNode,const struct list_head* tInsNodeHead){
 
-        TInsNode *tnInsNode = NULL;
+void GuiInstance::InstanceEntry(CMessage *const pMsg){
+
+        u32 curState = CurState();
+        u16 curEvent = pMsg->event;
+        msgProcess c_MsgProcess;
+        TInsNode *fInsNode;
+
+        if(NULL == pMsg){
+                OspLog(LOG_LVL_ERROR,"[InstanceEntry]msg is NULL\n");
+                return;
+        }
+
+        if((fInsNode = findProcess(MAKEESTATE(curState,curEvent),&TInsNodeHead))){
+                fInsNode->c_MsgProcess(pMsg);
+        }else{
+                OspLog(LOG_LVL_ERROR,"[InstanceEntry]state or event error\n");
+        }
+}
+
+void GuiInstance::DaemonInstanceEntry(CMessage *const pMsg,CApp* pApp){
+
+        u32 curState = CurState();
+        u16 curEvent = pMsg->event;
+        msgProcess c_MsgProcess;
+        TInsNode *fInsNode;
+
+        if(NULL == pMsg){
+                OspLog(LOG_LVL_ERROR,"[InstanceEntry]msg is NULL\n");
+                return;
+        }
+
+        if((fInsNode = findProcess(MAKEESTATE(curState,curEvent),&TInsNodeHead))){
+                fInsNode->c_MsgProcess(pMsg);
+        }else{
+                OspLog(LOG_LVL_ERROR,"[InstanceEntry]state or event error,event:%d, \
+                                state:%d\n",curEvent,curState);
+        }
+}
+
+void GetSignIn(CMessage* const pMsg){
+        printf("[GetSignIn]ack:%d\n",*(u16*)pMsg->content);
+}
+
+void GetSignOut(CMessage* const pMsg){
+        printf("[GetSignOut]ack:%d\n",*(u16*)pMsg->content);
+}
+
+void msgProcessInit(){
+
+        regProcess(MAKEESTATE(IDLE_STATE,GUI_SIGN_IN_ACK),GetSignIn,&TInsNodeHead);
+        regProcess(MAKEESTATE(IDLE_STATE,GUI_SIGN_OUT_ACK),GetSignOut,&TInsNodeHead);
+}
+
+static TInsNode* findProcess(const u32 eventState,const struct list_head* tInsNodeHead){
+
+        TInsNode *tnInsNode;
         struct list_head *insHead;
 
-        list_for_each(tnInsNode,tInsNodeHead){
-                tnInsNode = list_entry(tnInsNode,TInsNode,tListHead);
-                if(tnInsNode->EventState == tInsNode->EventState){
-                        break;
+        list_for_each(insHead,tInsNodeHead){
+                tnInsNode = list_entry(insHead,TInsNode,tListHead);
+                if(tnInsNode->EventState == eventState){
+                        return tnInsNode;
                 }
                 
         }
-        return tnInsNode;
+        return NULL;
 }
 
-static void regProcess(const u32 eventState,const msgProcess* c_MsgProcess
-                                ,struct list_head** tInsNodeHead){
+static void regProcess(const u32 eventState,const msgProcess c_MsgProcess
+                                ,struct list_head* tInsNodeHead){
 
         TInsNode* tInsNode = NULL;
 
@@ -85,45 +160,27 @@ static void regProcess(const u32 eventState,const msgProcess* c_MsgProcess
                 return;
         }
 
-        tInsNode->EventState = EventState;
-        tInsNode->c_MsgProcess = *c_MsgProcess;
-        if(findProcess(tInsNode,*tInsNodeHead)){
+        if(findProcess(eventState,tInsNodeHead)){
                 OspLog(LOG_LVL_ERROR,"[regProcess]node already registered\n");
                 return;
         }
 
-        list_add(&tInsNode->tListHead,*tInsNodeHead);
+        tInsNode->c_MsgProcess = c_MsgProcess;
+        tInsNode->EventState = eventState;
+        list_add(&tInsNode->tListHead,tInsNodeHead);
 }
 
-static void delInsNode(struct list_head ** tInsNodeHead){
+static void delInsNode(struct list_head* tInsNodeHead){
 
         struct list_head *insHead,*templist;
         TInsNode *tnInsNode;
 
-        list_for_each_safe(insHead,templist,&*tInsNodeHead){
+        list_for_each_safe(insHead,templist,tInsNodeHead){
                 tnInsNode = list_entry(insHead,TInsNode,tListHead);
                 list_del(&tnInsNode->tListHead);
                 delete tnInsNode;
         }
 
-        INIT_LIST_HEAD(*tInsNodeHead);
-}
-
-void GuiInstance::InstanceEntry(CMessage *const pMsg){
-
-        u32 curState = CurState();
-        u16 curEvent = pMsg->event;
-        msgProcess c_MsgProcess;
-        TInsNode tInsNode;
-
-        tInsNode.EventState = MAKEESTATE(curState,curEvent);
-        tInsNode.c_MsgProcess = 
-        if(NULL == pMsg){
-                OspLog(LOG_LVL_ERROR,"[InstanceEntry]msg is NULL\n");
-                return;
-        }
-
-        if(findProcess())
-
+        INIT_LIST_HEAD(tInsNodeHead);
 }
 

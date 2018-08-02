@@ -1,3 +1,6 @@
+#ifndef _OSP_CLIENT_H
+#define _OSP_CLIENT_H
+
 #include"osp.h"
 #include"commondemo.h"
 
@@ -73,6 +76,7 @@
 #define SEND_STABLE_REMOVE_CMD_DEAL    (EV_CLIENT_TEST_BGN+42)
 
 
+#define MAKEESTATE(state,event) ((u32)((event) << 4 + (state)))
 typedef struct tagSinInfo{
         s8 Username[AUTHORIZATION_NAME_SIZE];
         s8 Passwd[AUTHORIZATION_NAME_SIZE];
@@ -209,3 +213,6 @@ typedef zTemplate<CCInstance,CLIENT_INSTANCE_NUM,CAppNoData,MAX_ALIAS_LENGTH> CC
 #else
 typedef zTemplate<CCInstance,MAX_INS_NUM,CAppNoData,MAX_ALIAS_LENGTH> CCApp;
 #endif
+
+API int clientInit(u32);
+#endif //_OSP_CLIENT_H
