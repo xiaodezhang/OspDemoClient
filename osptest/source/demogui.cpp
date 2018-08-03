@@ -129,12 +129,40 @@ void GetSignOut(CMessage* const pMsg){
         printf("[GetSignOut]ack:%d\n",*(s16*)pMsg->content);
 }
 
+static  u32 file_size;
 void GetFileSize(CMessage* const pMsg){
-        printf("[GetFileSize]ack:%ld\n",*(u64*)pMsg->content);
+        printf("[GetFileSize]ack:%ld\n",*(u32*)pMsg->content);
+        file_size = *(u32*)pMsg->content;
 }
 
 void GetUploadFileSize(CMessage* const pMsg){
-//        printf("[GetUploadFileSize]ack:%ld\n",*(u64*)pMsg->content);
+
+        u32 uploadfilesize = *(u32*)pMsg->content;
+        printf("[GetUploadFileSize]ack:%f\n",(float)uploadfilesize/(float)file_size);
+}
+
+void GetDisconnect(CMessage* const pMsg){
+        printf("[GetDisconnect]ack:%d\n",*(s16*)pMsg->content);
+}
+
+void GetFileUpload(CMessage* const pMsg){
+        printf("[GetFileUpload]ack:%d\n",*(s16*)pMsg->content);
+}
+
+void GetFileFinished(CMessage* const pMsg){
+        printf("[GetFileFinished]ack:%d\n",*(s16*)pMsg->content);
+}
+
+void GetFileCancel(CMessage* const pMsg){
+        printf("[GetFileCancel]ack:%d\n",*(s16*)pMsg->content);
+}
+
+void GetFileRemove(CMessage* const pMsg){
+        printf("[GetFileRemove]ack:%d\n",*(s16*)pMsg->content);
+}
+
+void GetFileGoOn(CMessage* const pMsg){
+        printf("[GetFileGoON]ack:%d\n",*(s16*)pMsg->content);
 }
 
 void msgProcessInit(){
@@ -143,6 +171,12 @@ void msgProcessInit(){
         regProcess(MAKEESTATE(IDLE_STATE,GUI_SIGN_OUT_ACK),GetSignOut,&TInsNodeHead);
         regProcess(MAKEESTATE(IDLE_STATE,GUI_FILE_SIZE_ACK),GetFileSize,&TInsNodeHead);
         regProcess(MAKEESTATE(IDLE_STATE,GUI_UPLOAD_FILE_SIZE_ACK),GetUploadFileSize,&TInsNodeHead);
+        regProcess(MAKEESTATE(IDLE_STATE,GUI_DISCONNECT),GetDisconnect,&TInsNodeHead);
+        regProcess(MAKEESTATE(IDLE_STATE,GUI_FILE_UPLOAD_ACK),GetFileUpload,&TInsNodeHead);
+        regProcess(MAKEESTATE(IDLE_STATE,GUI_FILE_FINISHED_ACK),GetFileFinished,&TInsNodeHead);
+        regProcess(MAKEESTATE(IDLE_STATE,GUI_FILE_CANCEL_ACK),GetFileCancel,&TInsNodeHead);
+        regProcess(MAKEESTATE(IDLE_STATE,GUI_FILE_REMOVE_ACK),GetFileRemove,&TInsNodeHead);
+        regProcess(MAKEESTATE(IDLE_STATE,GUI_FILE_GO_ON_ACK),GetFileGoOn,&TInsNodeHead);
 }
 
 static TInsNode* findProcess(const u32 eventState,const struct list_head* tInsNodeHead){

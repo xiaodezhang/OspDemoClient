@@ -17,6 +17,7 @@
 #define GUI_FILE_FINISHED_ACK                   (GUI_MSG_BASE+7)
 #define GUI_FILE_CANCEL_ACK                     (GUI_MSG_BASE+8)
 #define GUI_FILE_REMOVE_ACK                     (GUI_MSG_BASE+9)
+#define GUI_FILE_GO_ON_ACK                      (GUI_MSG_BASE+10)
 
 class GuiInstance : public CInstance{
 
