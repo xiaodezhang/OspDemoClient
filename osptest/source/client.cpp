@@ -68,6 +68,11 @@ typedef struct tagUploadAck{
         s16            wClientAck;
 }TUploadAck;
 
+typedef struct tagRemoveAck{
+        bool           stableFlag;
+        u16            wClientAck;
+}TRemoveAck;
+
 static TGuiAck tGuiAck;
 static bool CheckFileIn(LPCSTR filename,TFileList **tFile);
 static CCInstance* GetPendingIns();
@@ -1035,9 +1040,8 @@ void CCInstance::StableRemoveCmdDeal(CMessage* const pMsg){
 void CCInstance::FileRemoveAck(CMessage* const pMsg){
 
         TFileList *tFile;
-        bool *bStableFlag;
+        TRemoveAck *tRemoveAck;
 
-        bStableFlag = (bool*)pMsg->content;
 
         wGuiAck  = 0;
 
@@ -1046,7 +1050,18 @@ void CCInstance::FileRemoveAck(CMessage* const pMsg){
                 return;
         }
 
-        if(!*bStableFlag){
+        if(!pMsg->content || pMsg->length <= 0){
+                wGuiAck = -1;
+                goto post2gui;
+        }
+
+        tRemoveAck = (TRemoveAck*)pMsg->content;
+        if(tRemoveAck.wClientAck != 0){
+                wGuiAck = tRemoveAck.wClientAck;
+                goto post2gui;
+        }
+
+        if(!tRemoveAck.stableFlag){
                 if(fclose(file) == 0){
                         OspLog(SYS_LOG_LEVEL,"[FileRemoveAck]file closed\n");
                 }else{
@@ -1066,6 +1081,7 @@ void CCInstance::FileRemoveAck(CMessage* const pMsg){
         //TODO:key print
         OspLog(SYS_LOG_LEVEL,"[FileRemoveAck]file removed\n");
 
+post2gui:
         tGuiAck.wGuiAck = wGuiAck;
         strcpy(tGuiAck.FileName,(LPCSTR)file_name_path);
         if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_REMOVE_ACK
