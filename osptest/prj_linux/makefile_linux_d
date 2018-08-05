@@ -19,7 +19,7 @@ CURDIR := ./
 
 ## Name and type of the target for this Makefile
 
-APP_TARGET      := osptest.linux
+APP_TARGET      := client.linux
 
 ## Define debugging symbols
 DEBUG = 0
@@ -30,7 +30,7 @@ PWLIB_SUPPORT = 0
 CFLAGS += -m32
 LDFLAGS += -m32
 
-OBJS := $(SRC_DIR)/client
+OBJS := $(SRC_DIR)/client $(SRC_DIR)/demogui
 
 ## Libraries to include in shared object file
 

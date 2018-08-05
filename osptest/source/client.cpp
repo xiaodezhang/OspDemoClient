@@ -371,12 +371,14 @@ void CCInstance::FileUploadCmdDeal(CMessage *const pMsg){
                  OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal] file fseeek error\n");
                  wGuiAck = -18;
                  fclose(file);
+                 file = NULL;
                  goto postError2gui;
         }
         if(-1L == (m_wFileSize = ftell(file))){
                  OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal] file ftell error\n");
                  wGuiAck = -19;
                  fclose(file);
+                 file = NULL;
                  goto postError2gui;
         }
 
@@ -394,10 +396,7 @@ void CCInstance::FileUploadCmdDeal(CMessage *const pMsg){
                ,&m_wFileSize,sizeof(m_wFileSize),g_dwGuiNode)){
                 OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal]post error\n");
         }
-        if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_UPLOAD_ACK
-               ,&wGuiAck,sizeof(wGuiAck),g_dwGuiNode)){
-                OspLog(LOG_LVL_ERROR,"[SignOutAck]post error\n");
-        }
+
         OspLog(SYS_LOG_LEVEL,"[FileUploadCmdDeal]send upload\n");
         return;
         //Daemon已经设置
@@ -506,6 +505,7 @@ postError2gui:
         }
         NextState(IDLE_STATE);
         fclose(file);
+        file = NULL;
 
         tGuiAck.wGuiAck = wGuiAck;
         strcpy(tGuiAck.FileName,(LPCSTR)file_name_path);
@@ -1056,12 +1056,12 @@ void CCInstance::FileRemoveAck(CMessage* const pMsg){
         }
 
         tRemoveAck = (TRemoveAck*)pMsg->content;
-        if(tRemoveAck.wClientAck != 0){
-                wGuiAck = tRemoveAck.wClientAck;
+        if(tRemoveAck->wClientAck != 0){
+                wGuiAck = tRemoveAck->wClientAck;
                 goto post2gui;
         }
 
-        if(!tRemoveAck.stableFlag){
+        if(!tRemoveAck->stableFlag){
                 if(fclose(file) == 0){
                         OspLog(SYS_LOG_LEVEL,"[FileRemoveAck]file closed\n");
                 }else{
@@ -1188,19 +1188,34 @@ void CCInstance::FileCancelAck(CMessage* const pMsg){
 
         u16 wAppId;
         TFileList *tFile;
+        u16 *wClientAck;
 
         wGuiAck = 0;
+        NextState(IDLE_STATE);
+
         if(!g_bSignFlag){
                 OspLog(SYS_LOG_LEVEL,"[FileCancelAck]not sign in\n");
                 return;
         }
+        if(!pMsg->content || pMsg->length <= 0){
+                OspLog(LOG_LVL_ERROR,"[FileCancelAck]file close failed\n");
+                wGuiAck = -1;
+                goto post2gui;
+        }
 
+        wClientAck = (u16*)pMsg->content;
+        if((wGuiAck = *wClientAck) != 0){
+                goto post2gui;
+        }
         if(fclose(file) == 0){
                 OspLog(SYS_LOG_LEVEL,"[FileCancelAck]file closed\n");
+                file = NULL;
         }else{
                 OspLog(LOG_LVL_ERROR,"[FileCancelAck]file close failed\n");
+                wGuiAck = -2;
+                file = NULL;
+                goto post2gui;
         }
-        file = NULL;
 
         //修改文件表中状态
         CheckFileIn((LPCSTR)file_name_path,&tFile);
@@ -1209,8 +1224,8 @@ void CCInstance::FileCancelAck(CMessage* const pMsg){
         tFile->FileSize = m_wFileSize;
         emFileStatus = STATUS_CANCELLED;
 	    //释放instance
-        NextState(IDLE_STATE);
 
+post2gui:
         tGuiAck.wGuiAck = wGuiAck;
         strcpy(tGuiAck.FileName,(LPCSTR)file_name_path);
         if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_CANCEL_ACK
