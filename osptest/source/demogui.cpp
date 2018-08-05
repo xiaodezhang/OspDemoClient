@@ -39,7 +39,7 @@ int main(){
                 OspQuit();
                 return -1;
         }
-
+        OspSetPrompt("Client");
         INIT_LIST_HEAD(&TInsNodeHead);
         msgProcessInit();
 

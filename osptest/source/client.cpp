@@ -77,6 +77,55 @@ static TGuiAck tGuiAck;
 static bool CheckFileIn(LPCSTR filename,TFileList **tFile);
 static CCInstance* GetPendingIns();
 
+void ShowApp(){
+
+        u16 i;
+        CCInstance *pIns;
+        const char* state[] = {"IDLE","RUNNING"};
+
+
+        OspAppShow();
+        //OspInstDump(CLIENT_APP_ID,8);
+
+        OspLog(SYS_LOG_LEVEL,"app  %d  ins info:\n",CLIENT_APP_ID);
+        for(i = 1;i < MAX_INS_NUM;i++){
+
+                pIns = (CCInstance*)((CApp*)&g_cCApp)->GetInstance(i);
+                if(!pIns){
+                        OspLog(LOG_LVL_ERROR,"[ShowApp]get error ins\n");
+                        continue;
+                }
+                OspLog(SYS_LOG_LEVEL,"insid :  %d    state :  %s \n",i,state[pIns->m_curState]);
+        }
+}
+
+void ShowInst(){
+
+        OspInstShow(CLIENT_APP_ID);
+}
+
+void ShowRunInst(){
+
+        u16 i;
+        CCInstance *pIns;
+
+        OspLog(SYS_LOG_LEVEL,"app  %d running ins info:\n",CLIENT_APP_ID);
+        for(i = 1;i < MAX_INS_NUM;i++){
+
+                pIns = (CCInstance*)((CApp*)&g_cCApp)->GetInstance(i);
+                if(!pIns){
+                        OspLog(LOG_LVL_ERROR,"[ShowApp]get error ins\n");
+                        continue;
+                }
+                if(pIns->m_curState == RUNNING_STATE){
+                       //OspLog(SYS_LOG_LEVEL,"insid :  %d    state :  %s \n",i,state[pIns->m_curState]);
+		       //;
+                }
+
+        }
+
+}
+
 int clientInit(u32 guiPort){
 
         s16 i,j;
@@ -92,6 +141,9 @@ int clientInit(u32 guiPort){
                 return -1;
         }
 #ifdef _LINUX_
+        OspRegCommand("ShowRunInst",(void*)ShowRunInst,"");
+        OspRegCommand("ShowInst",(void*)ShowInst,"");
+        OspRegCommand("ShowApp",(void*)ShowApp,"");
         OspRegCommand("tcancel",(void*)Test_Cancel,"");
         OspRegCommand("tdisconnect",(void*)Test_DisConnect,"");
         OspRegCommand("Connect",(void*)Connect2Server,"");
