@@ -77,8 +77,8 @@
 
 #define MAKEESTATE(state,event) ((u32)((event) << 4 + (state)))
 typedef struct tagSinInfo{
-        s8 Username[AUTHORIZATION_NAME_SIZE];
-        s8 Passwd[AUTHORIZATION_NAME_SIZE];
+        u8 Username[AUTHORIZATION_NAME_SIZE];
+        u8 Passwd[AUTHORIZATION_NAME_SIZE];
 }TSinInfo;
 
 typedef enum tagEM_FILE_STATUS{
