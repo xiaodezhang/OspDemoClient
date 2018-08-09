@@ -25,8 +25,9 @@ API void SendCancelCmd();
 API void SendRemoveCmd();
 API void SendFileGoOnCmd();
 API void Disconnect2Server();
+extern int File2Sha1(const char*,char*);
 
-static void UploadCmdSingle(const s8*);
+static void UploadCmdSingle(LPCSTR);
 
 static u32 g_dwdstNode;
 static u32 g_dwGuiNode;
@@ -52,7 +53,7 @@ typedef struct tagFileList{
 
 typedef struct tagDemoInfo{
         u32                    srcid;
-        s8                     FileName[MAX_FILE_NAME_LENGTH];
+        u8                     FileName[MAX_FILE_NAME_LENGTH];
         u32                    UploadFileSize;
         u32                    FileSize;
         EM_FILE_STATUS         emFileStatus;
@@ -60,7 +61,7 @@ typedef struct tagDemoInfo{
 
 typedef struct tagGuiAck{
         s16                    wGuiAck;
-        s8                     FileName[MAX_FILE_NAME_LENGTH];
+        u8                     FileName[MAX_FILE_NAME_LENGTH];
 }TGuiAck;
 
 typedef struct tagUploadAck{
@@ -70,7 +71,7 @@ typedef struct tagUploadAck{
 
 typedef struct tagRemoveAck{
         bool           stableFlag;
-        u16            wClientAck;
+        s16            wClientAck;
 }TRemoveAck;
 
 static TGuiAck tGuiAck;
@@ -247,10 +248,10 @@ API void Disconnect2Server(){
 
 API void SendFileGoOnCmd(){
 
-       s8 file_name[] = MY_FILE_NAME;
+       u8 file_name[] = MY_FILE_NAME;
 
        if(OSP_OK != ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::DAEMON),FILE_GO_ON_CMD,
-                               file_name,strlen(file_name)+1)){
+                               (LPCSTR)file_name,strlen((LPCSTR)file_name)+1)){
                OspLog(LOG_LVL_ERROR,"[SendCancel] post error\n");
        }
 
@@ -258,10 +259,10 @@ API void SendFileGoOnCmd(){
 
 API void SendCancelCmd(){
 
-       s8 file_name[] = MY_FILE_NAME;
+       u8 file_name[] = MY_FILE_NAME;
 
        if(OSP_OK != ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::DAEMON),SEND_CANCEL_CMD,
-                               file_name,strlen(file_name)+1)){
+                               (LPCSTR)file_name,strlen((LPCSTR)file_name)+1)){
                OspLog(LOG_LVL_ERROR,"[SendCancel] post error\n");
        }
 }
@@ -271,7 +272,7 @@ API void SendRemoveCmd(){
        s8 file_name[] = MY_FILE_NAME;
 
        if(OSP_OK != ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::DAEMON),SEND_REMOVE_CMD,
-                       file_name,strlen(file_name)+1)){
+                       (LPCSTR)file_name,strlen((LPCSTR)file_name)+1)){
               OspLog(LOG_LVL_ERROR,"[SendRemoveCmd] post error\n");
        }
 }
@@ -280,8 +281,8 @@ API void SendSignInCmd(){
 
         TSinInfo tSinInfo;
 
-        strcpy(tSinInfo.Username,"Robert");
-        strcpy(tSinInfo.Passwd,"admin");
+        strcpy((LPSTR)tSinInfo.Username,"Robert");
+        strcpy((LPSTR)tSinInfo.Passwd,"admin");
 
         if(OSP_OK != ::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::DAEMON),SIGN_IN_CMD,
                         &tSinInfo,sizeof(tSinInfo))){
@@ -298,10 +299,10 @@ API int SendSignOutCmd(){
         }
 }
 
-static void UploadCmdSingle(const s8* filename){
+static void UploadCmdSingle(LPCSTR filename){
 
         if(OSP_OK !=::OspPost(MAKEIID(CLIENT_APP_ID,CInstance::DAEMON),FILE_UPLOAD_CMD,
-                        filename,strlen(filename)+1)){
+                        (LPCSTR)filename,strlen((LPCSTR)filename)+1)){
                OspLog(LOG_LVL_ERROR,"[UploadCmdSingle] post error\n");
         }
 }
@@ -322,6 +323,7 @@ void CCInstance::FileUploadCmd(CMessage*const pMsg){
 
         CCInstance *ccIns;
         TFileList *tnFile = NULL;
+        char sha1Buffer[41];
 
         wGuiAck = 0;
 #if 0
@@ -341,6 +343,13 @@ void CCInstance::FileUploadCmd(CMessage*const pMsg){
                  OspLog(LOG_LVL_ERROR,"[FileUploadCmd] pMsg is NULL\n");
                  return;
         }
+
+        if(File2Sha1((LPCSTR)(pMsg->content),sha1Buffer) != 0){
+                OspLog(LOG_LVL_ERROR,"[FileUploadCmd]file:%s sha1 error\n",pMsg->content);
+                wGuiAck = -11;
+                goto post2gui;
+        }
+        OspLog(SYS_LOG_LEVEL,"[FileUploadCmd]file:%s sha1:%s\n",sha1Buffer);
 
         //确认文件没有被其他Instance占用
         //TODO: 其他状态的确认
@@ -382,7 +391,7 @@ void CCInstance::FileUploadCmd(CMessage*const pMsg){
 
 post2gui:
         tGuiAck.wGuiAck = wGuiAck;
-        strcpy(tGuiAck.FileName,(LPCSTR)pMsg->content);
+        strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)pMsg->content);
         if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_UPLOAD_ACK
                ,&tGuiAck,sizeof(tGuiAck),g_dwGuiNode)){
                 OspLog(LOG_LVL_ERROR,"[SignOutAck]post error\n");
@@ -464,7 +473,7 @@ postError2gui:
         NextState(IDLE_STATE);
 
         tGuiAck.wGuiAck = wGuiAck;
-        strcpy(tGuiAck.FileName,(LPCSTR)pMsg->content);
+        strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)pMsg->content);
         if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_UPLOAD_ACK
                ,&tGuiAck,sizeof(tGuiAck),g_dwGuiNode)){
                 OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal]post error\n");
@@ -560,7 +569,7 @@ postError2gui:
         file = NULL;
 
         tGuiAck.wGuiAck = wGuiAck;
-        strcpy(tGuiAck.FileName,(LPCSTR)file_name_path);
+        strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)file_name_path);
         if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_UPLOAD_ACK
                ,&tGuiAck,sizeof(tGuiAck),g_dwGuiNode)){
                 OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal]post error\n");
@@ -599,7 +608,7 @@ void CCInstance::FileFinishAck(CMessage* const pMsg){
         NextState(IDLE_STATE);
 
         tGuiAck.wGuiAck = wGuiAck;
-        strcpy(tGuiAck.FileName,(LPCSTR)file_name_path);
+        strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)file_name_path);
         if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_FINISHED_ACK
                ,&tGuiAck,sizeof(tGuiAck),g_dwGuiNode)){
                 OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal]post error\n");
@@ -1046,7 +1055,7 @@ void CCInstance::RemoveCmd(CMessage* const pMsg){
 postError2gui:
 
         tGuiAck.wGuiAck = wGuiAck;
-        strcpy(tGuiAck.FileName,(LPCSTR)pMsg->content);
+        strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)pMsg->content);
         if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_CANCEL_ACK
                ,&tGuiAck,sizeof(tGuiAck),g_dwGuiNode)){
                 OspLog(LOG_LVL_ERROR,"[RemoveCmd]post error\n");
@@ -1135,7 +1144,7 @@ void CCInstance::FileRemoveAck(CMessage* const pMsg){
 
 post2gui:
         tGuiAck.wGuiAck = wGuiAck;
-        strcpy(tGuiAck.FileName,(LPCSTR)file_name_path);
+        strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)file_name_path);
         if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_REMOVE_ACK
                ,&tGuiAck,sizeof(tGuiAck),g_dwGuiNode)){
                 OspLog(LOG_LVL_ERROR,"[FileRemoveAck]post error\n");
@@ -1198,7 +1207,7 @@ void CCInstance::CancelCmd(CMessage* const pMsg){
 postError2gui:
 
         tGuiAck.wGuiAck = wGuiAck;
-        strcpy(tGuiAck.FileName,(LPCSTR)pMsg->content);
+        strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)pMsg->content);
         if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_CANCEL_ACK
                ,&wGuiAck,sizeof(wGuiAck),g_dwGuiNode)){
                 OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal]post error\n");
@@ -1279,7 +1288,7 @@ void CCInstance::FileCancelAck(CMessage* const pMsg){
 
 post2gui:
         tGuiAck.wGuiAck = wGuiAck;
-        strcpy(tGuiAck.FileName,(LPCSTR)file_name_path);
+        strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)file_name_path);
         if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_CANCEL_ACK
                ,&tGuiAck,sizeof(tGuiAck),g_dwGuiNode)){
                 OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal]post error\n");
@@ -1349,7 +1358,7 @@ void CCInstance::FileGoOnCmd(CMessage* const pMsg){
 postError2gui:
 
         tGuiAck.wGuiAck = wGuiAck;
-        strcpy(tGuiAck.FileName,(LPCSTR)pMsg->content);
+        strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)pMsg->content);
         if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_GO_ON_ACK
                ,&tGuiAck,sizeof(tGuiAck),g_dwGuiNode)){
                 OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal]post error\n");
@@ -1385,7 +1394,7 @@ void CCInstance::FileGoOnCmdDeal(CMessage* const pMsg){
         }
 
         if(OSP_OK != post(MAKEIID(SERVER_APP_ID,DAEMON),FILE_GO_ON
-                       ,tDemoInfo->FileName,strlen(tDemoInfo->FileName)+1,g_dwdstNode)){
+                       ,tDemoInfo->FileName,strlen((LPCSTR)tDemoInfo->FileName)+1,g_dwdstNode)){
                 OspLog(LOG_LVL_ERROR,"[FileGoOnCmdDeal] post error\n");
                 return;
         }
@@ -1393,7 +1402,7 @@ void CCInstance::FileGoOnCmdDeal(CMessage* const pMsg){
 //        emFileStatus = STATUS_SEND_CANCEL;
 postError2gui:
         tGuiAck.wGuiAck = wGuiAck;
-        strcpy(tGuiAck.FileName,(LPCSTR)file_name_path);
+        strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)file_name_path);
         if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_GO_ON_ACK
                ,&tGuiAck,sizeof(tGuiAck),g_dwGuiNode)){
                 OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal]post error\n");

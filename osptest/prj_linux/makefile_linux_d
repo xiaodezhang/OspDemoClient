@@ -14,6 +14,7 @@ TOP := ..
 COMM_DIR := ./
 
 SRC_DIR := $(TOP)/source
+LIB_DIR := $(TOP)/lib
 
 CURDIR := ./
 
@@ -30,7 +31,10 @@ PWLIB_SUPPORT = 0
 CFLAGS += -m32
 LDFLAGS += -m32
 
-OBJS := $(SRC_DIR)/client $(SRC_DIR)/demogui
+OBJS := $(LIB_DIR)/sha1 $(LIB_DIR)/ubc_check \
+	$(LIB_DIR)/file2sha1 \
+        $(SRC_DIR)/client $(SRC_DIR)/demogui 
+
 
 ## Libraries to include in shared object file
 
@@ -41,7 +45,8 @@ LIB_PATH = $(CURDIR)/../../common/lib/debug/linux
 ## Add driver-specific include directory to the search path
 
 INC_PATH += $(CURDIR) $(CURDIR)/../include \
-	        $(CURDIR)/../../common/include
+	        $(CURDIR)/../../common/include \
+	        $(CURDIR)/../lib
 
 ifeq ($(PWLIB_SUPPORT),1)
    INC_PATH += $(PWLIBDIR)/include/ptlib/unix $(PWLIBDIR)/include
