@@ -381,14 +381,14 @@ void CCInstance::FileUploadCmd(CMessage*const pMsg){
                 goto post2gui;
             }
             list_add(&tnFile->tListHead,&tFileList);
+            strcpy((LPSTR)tnFile->FileName,(LPSTR)pMsg->content);
         }
 
         //立刻将该Instance状态设置为RUNNING，防止因为立刻调用其他处理导致该instance
         //被其他任务(业务)查询之后调用
         ccIns->m_curState = RUNNING_STATE;
-        strcpy((LPSTR)tnFile->FileName,(LPSTR)pMsg->content);
         tnFile->DealInstance = ccIns->GetInsID();
-        tnFile->FileStatus = STATUS_UPLOAD_CMD;
+        tnFile->FileStatus = STATUS_UPLOADING;
 
 post2gui:
         tGuiAck.wGuiAck = wGuiAck;
@@ -1051,6 +1051,7 @@ void CCInstance::RemoveCmd(CMessage* const pMsg){
     }
     ccIns->m_curState = RUNNING_STATE;
     tFile->FileStatus = STATUS_REMOVE_CMD;
+    tFile->DealInstance = ccIns->GetInsID();
     return;
 
 postError2gui:
@@ -1353,7 +1354,7 @@ void CCInstance::FileGoOnCmd(CMessage* const pMsg){
             goto postError2gui;
     }
     ccIns->m_curState = RUNNING_STATE;
-    tFile->FileStatus = STATUS_GO_ON_CMD;
+    tFile->FileStatus = STATUS_UPLOADING;
     tFile->DealInstance = ccIns->GetInsID();
 
 postError2gui:
