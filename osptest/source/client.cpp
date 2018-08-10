@@ -26,7 +26,7 @@ API void SendRemoveCmd();
 API void SendFileGoOnCmd();
 API void Disconnect2Server();
 
-static void UploadCmdSingle(LPCSTR);
+static void UploadCmdSingle(const u8*);
 
 static u32 g_dwdstNode;
 static u32 g_dwGuiNode;
