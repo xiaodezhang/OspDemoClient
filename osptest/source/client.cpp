@@ -25,6 +25,7 @@ API void SendCancelCmd();
 API void SendRemoveCmd();
 API void SendFileGoOnCmd();
 API void Disconnect2Server();
+extern int File2Sha1(const char*,char*);
 
 static void UploadCmdSingle(const u8*);
 
@@ -322,6 +323,7 @@ void CCInstance::FileUploadCmd(CMessage*const pMsg){
 
         CCInstance *ccIns;
         TFileList *tnFile = NULL;
+        char sha1Buffer[41];
 
         wGuiAck = 0;
 #if 0
@@ -340,6 +342,14 @@ void CCInstance::FileUploadCmd(CMessage*const pMsg){
         if(!pMsg->content || pMsg->length <= 0){
                  OspLog(LOG_LVL_ERROR,"[FileUploadCmd] pMsg is NULL\n");
                  return;
+        }
+
+        if(File2Sha1((const char*)pMsg->content,sha1Buffer) != 0){
+                OspLog(LOG_LVL_ERROR,"[FileUploadCmd]file:%s sha1 error\n",pMsg->content);
+                wGuiAck = -11;
+                goto post2gui;
+        }else{
+                OspLog(SYS_LOG_LEVEL,"[FileUploadCmd]file:%s sha1:%s\n",pMsg->content,sha1Buffer);
         }
 
         //确认文件没有被其他Instance占用
