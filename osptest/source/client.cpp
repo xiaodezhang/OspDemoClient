@@ -25,7 +25,9 @@ API void SendCancelCmd();
 API void SendRemoveCmd();
 API void SendFileGoOnCmd();
 API void Disconnect2Server();
-extern int File2Sha1(const char*,char*);
+API int def(FILE *source, FILE *dest, int level);
+API int File2Sha1(const char*,char*);
+
 
 static void UploadCmdSingle(const u8*);
 
@@ -63,6 +65,16 @@ typedef struct tagGuiAck{
         s16                    wGuiAck;
         u8                     FileName[MAX_FILE_NAME_LENGTH];
 }TGuiAck;
+
+typedef struct tagSha1Ack{
+        u8             FileName[MAX_FILE_NAME_LENGTH];
+        bool           exist;
+}TSha1Ack;
+
+typedef struct tagSha1Send{
+        u8             FileName[MAX_FILE_NAME_LENGTH];
+        char           Sha1[41];
+}TSha1Send;
 
 typedef struct tagUploadAck{
         EM_FILE_STATUS emFileStatus;
@@ -322,6 +334,119 @@ API void MultSendFileUploadCmd(){
         UploadCmdSingle(MY_FILE_NAME"5");
 }
 
+void CCInstance::FileSha1Ack(CMessage*const pMsg){
+
+        TSha1Ack* tSha1Ack;
+        CCInstance *ccIns;
+        TFileList *tnFile = NULL;
+
+        wGuiAck = 0;
+        if(!g_bSignFlag){
+                OspLog(SYS_LOG_LEVEL,"[FileFinishAck]did not sign in\n");
+                return;
+        }
+        //TODO:内容检查
+        
+        tSha1Ack = (TSha1Ack*)pMsg->content;
+        if(!(tSha1Ack->exist)){
+                //确认文件没有被其他Instance占用
+                //TODO: 其他状态的确认
+                if(CheckFileIn((LPCSTR)tSha1Ack->FileName,&tnFile) && STATUS_FINISHED != tnFile->FileStatus
+                                && STATUS_REMOVED != tnFile->FileStatus){
+                        OspLog(SYS_LOG_LEVEL,"[FileUploadCmd]file is not finished or removed\n");
+                        wGuiAck = -12;
+                        goto post2gui;
+                }
+                 //查询空闲Instance
+                if(!(ccIns = GetPendingIns())){
+                        OspLog(SYS_LOG_LEVEL, "[FileUploadCmd]no pending instance,please wait...\n");
+                        wGuiAck = -13;
+                        goto post2gui;
+                }
+
+                if(OSP_OK != post(MAKEIID(CLIENT_APP_ID,ccIns->GetInsID()),FILE_UPLOAD_CMD_DEAL,
+                                tSha1Ack->FileName,strlen(tSha1Ack->FileName)+1)){
+                       OspLog(LOG_LVL_ERROR,"[FileUploadCmd] post error\n");
+                       wGuiAck = -14;
+                       goto post2gui;
+                }
+                if(!tnFile){
+                    tnFile = new TFileList();
+                    if(!tnFile){
+                        OspLog(LOG_LVL_ERROR,"[FileUploadCmd]file list item malloc failed\n");
+                        wGuiAck = -15;
+                        goto post2gui;
+                    }
+                    list_add(&tnFile->tListHead,&tFileList);
+                    strcpy((LPSTR)tnFile->FileName,(LPSTR)pMsg->content);
+                }
+
+                //立刻将该Instance状态设置为RUNNING，防止因为立刻调用其他处理导致该instance
+                //被其他任务(业务)查询之后调用
+                ccIns->m_curState = RUNNING_STATE;
+                tnFile->DealInstance = ccIns->GetInsID();
+                tnFile->FileStatus = STATUS_UPLOADING;
+        }else{
+                tGuiAck.wGuiAck = 0;
+                strcpy(tGuiAck.FileName,tSha1Ack->FileName);
+                if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_FINISHED_ACK
+                       ,&tGuiAck,sizeof(tGuiAck),g_dwGuiNode)){
+                        OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal]post error\n");
+                }
+                return;
+        }
+
+post2gui:
+                tGuiAck.wGuiAck = wGuiAck;
+                strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)pMsg->content);
+                if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_UPLOAD_ACK
+                       ,&tGuiAck,sizeof(tGuiAck),g_dwGuiNode)){
+                        OspLog(LOG_LVL_ERROR,"[SignOutAck]post error\n");
+                }
+                return;
+
+
+}
+
+void CCInstance::FileUploadCmd(CMessage*const pMsg){
+
+        char sha1Buffer[41];
+
+        if(!g_bSignFlag){
+                OspLog(SYS_LOG_LEVEL,"[FileUploadCmd]did not sign in\n");
+                return;
+        }
+
+        if(!pMsg->content || pMsg->length <= 0){
+                 OspLog(LOG_LVL_ERROR,"[FileUploadCmd] pMsg is NULL\n");
+                 return;
+        }
+
+        if(pMsg->length > MAX_FILE_NAME_LENGTH){
+                OspLog(SYS_LOG_LEVEL,"[FileUploadCmd]file is not finished or removed\n");
+                wGuiAck = -10;
+                goto post2gui;
+        }
+
+
+        if(File2Sha1((const char*)pMsg->content,sha1Buffer) != 0){
+                OspLog(LOG_LVL_ERROR,"[FileUploadCmd]file:%s sha1 error\n",pMsg->content);
+                wGuiAck = -11;
+                goto post2gui;
+        }else{
+                OspLog(SYS_LOG_LEVEL,"[FileUploadCmd]file:%s sha1:%s\n",pMsg->content,sha1Buffer);
+        }
+
+        if(OSP_OK != post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON),FILE_SHA1
+                       ,sha1Buffer,41*sizeof(char),g_dwdstNode)){
+                OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal] post error\n");
+                return;
+        }
+
+
+}
+
+#if 0
 void CCInstance::FileUploadCmd(CMessage*const pMsg){
 
         CCInstance *ccIns;
@@ -402,11 +527,15 @@ post2gui:
         }
         return;
 }
+#endif
 
 void CCInstance::FileUploadCmdDeal(CMessage *const pMsg){
 
         struct list_head *tFileHead,*templist;
         TFileList *tnFile;
+        FILE * OFile;
+        char sha1Buffer[41];
+
 
         //虽然是内部调用，但是为了断链处理，这边也做检测
         if(!g_bSignFlag){
@@ -423,14 +552,42 @@ void CCInstance::FileUploadCmdDeal(CMessage *const pMsg){
 #endif
         wGuiAck = 0;
         m_wUploadFileSize = 0;
-        strcpy((LPSTR)file_name_path,(LPCSTR)pMsg->content);
         strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)pMsg->content);
         
+        strcpy((LPSTR)file_name_path,(LPCSTR)pMsg->content);
+        strcat((LPSTR)file_name_path,"_temp");
+        if(!(OFile= fopen((LPCSTR)pMsg->content,"rb"))){
+                 OspLog(LOG_LVL_ERROR,"[FileUploadCmd] open zfile error\n");
+#if 0
+                 wGuiAck = -30;
+                 goto post2gui;
+#endif
+        }
+
+       if(!(file= fopen((LPCSTR)file_name_path,"wb"))){
+                 OspLog(LOG_LVL_ERROR,"[FileUploadCmd]open zfiletemp:%s error\n",file_name_path);
+#if 0
+                 wGuiAck = -31;
+                 goto post2gui;
+#endif
+        }
+        if((def(OFile,file,Z_DEFAULT_COMPRESSION)) != Z_OK){
+                 OspLog(LOG_LVL_ERROR,"[FileUploadCmd] def error\n");
+#if 0
+                 wGuiAck = -32;
+                         //TODO:
+                 goto post2gui;
+#endif
+        }
+        fclose(OFile);
+
+#if 0
         if(!(file = fopen((LPCSTR)file_name_path,"rb"))){
                 OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal]open file failed\n");
                 wGuiAck = -17;
                 goto postError2gui;
         }
+#endif
         //获取文件大小，根据标准c，二进制流SEEK_END没有严格得到支持，ftell返回值为long int，
         //32位系统大小限制在2G
         if(fseek(file,0L,SEEK_END) != 0){
@@ -451,7 +608,7 @@ void CCInstance::FileUploadCmdDeal(CMessage *const pMsg){
         rewind(file);
 
         if(OSP_OK != post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON),FILE_SEND_UPLOAD
-                       ,pMsg->content,pMsg->length,g_dwdstNode)){
+                       ,file_name_path,strlen(file_name_path)+1,g_dwdstNode)){
                 OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal] post error\n");
                 return;
         }
@@ -824,6 +981,8 @@ void CCInstance::MsgProcessInit(){
 
         RegMsgProFun(MAKEESTATE(IDLE_STATE,OSP_DISCONNECT),&CCInstance::notifyDisconnect,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_UPLOAD_CMD),&CCInstance::FileUploadCmd,&m_tCmdDaemonChain);
+
+        RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_SHA1_ACK),&CCInstance::FileSha1Ack,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SEND_CANCEL_CMD),&CCInstance::CancelCmd,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,FILE_GO_ON_CMD),&CCInstance::FileGoOnCmd,&m_tCmdDaemonChain);
         RegMsgProFun(MAKEESTATE(IDLE_STATE,SEND_REMOVE_CMD),&CCInstance::RemoveCmd,&m_tCmdDaemonChain);
@@ -1305,6 +1464,7 @@ void CCInstance::FileGoOnCmd(CMessage* const pMsg){
     TFileList *tFile;
     TDemoInfo tDemoInfo;
 	CCInstance *ccIns;
+    u8 ZFileName[MAX_FILE_NAME_LENGTH];
 
     wGuiAck = 0;
     if(!g_bSignFlag){
@@ -1347,6 +1507,7 @@ void CCInstance::FileGoOnCmd(CMessage* const pMsg){
             wGuiAck = -14;
             goto postError2gui;
     }
+    strcpy((LPSTR)ZFileName)
     strcpy((LPSTR)tDemoInfo.FileName,(LPCSTR)tFile->FileName);
     tDemoInfo.UploadFileSize = tFile->UploadFileSize;
     tDemoInfo.FileSize = tFile->FileSize;

@@ -75,6 +75,9 @@
 #define SEND_STABLE_REMOVE_CMD_DEAL    (EV_CLIENT_TEST_BGN+42)
 
 
+#define FILE_SHA1                         (EV_CLIENT_TEST_BGN+44)
+#define FILE_SHA1_ACK                     (EV_CLIENT_TEST_BGN+45)
+
 #define MAKEESTATE(state,event) ((u32)((event) << 4 + (state)))
 typedef struct tagSinInfo{
         u8 Username[AUTHORIZATION_NAME_SIZE];
@@ -190,6 +193,7 @@ public:
         void FileGoOnCmdDeal(CMessage* const);
         void RemoveCmdDeal(CMessage* const);
         void StableRemoveCmdDeal(CMessage* const);
+        void FileSha1Ack(CMessage* const);
 
 #if MULTY_APP
         void GetDisconnect(CMessage* const);
