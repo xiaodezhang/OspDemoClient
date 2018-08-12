@@ -7,7 +7,7 @@
 #define APP_NUM_SIZE             20
 
 #define SERVER_DELAY             1000
-#define MY_FILE_NAME             "mydoc.7z"
+#define MY_FILE_NAME             "~/zhangzheng/data/mydoc.7z"
 #define NATIVE_IP                "127.0.0.1"
 
 #if 0
@@ -315,8 +315,11 @@ API void SendFileUploadCmd(){
 API void MultSendFileUploadCmd(){
 
         UploadCmdSingle(MY_FILE_NAME);
-        OspDelay(200);
-        UploadCmdSingle("test_file_name");
+        UploadCmdSingle(MY_FILE_NAME"1");
+        UploadCmdSingle(MY_FILE_NAME"2");
+        UploadCmdSingle(MY_FILE_NAME"3");
+        UploadCmdSingle(MY_FILE_NAME"4");
+        UploadCmdSingle(MY_FILE_NAME"5");
 }
 
 void CCInstance::FileUploadCmd(CMessage*const pMsg){
@@ -421,6 +424,7 @@ void CCInstance::FileUploadCmdDeal(CMessage *const pMsg){
         wGuiAck = 0;
         m_wUploadFileSize = 0;
         strcpy((LPSTR)file_name_path,(LPCSTR)pMsg->content);
+        strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)pMsg->content);
         
         if(!(file = fopen((LPCSTR)file_name_path,"rb"))){
                 OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal]open file failed\n");
@@ -474,7 +478,6 @@ postError2gui:
         NextState(IDLE_STATE);
 
         tGuiAck.wGuiAck = wGuiAck;
-        strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)pMsg->content);
         if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_UPLOAD_ACK
                ,&tGuiAck,sizeof(tGuiAck),g_dwGuiNode)){
                 OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal]post error\n");
@@ -1488,7 +1491,11 @@ static bool CheckFileIn(LPCSTR filename,TFileList **tFile){
                 }
         }
         if(tFile){
-                *tFile = tnFile;
+                if(inFileList){
+                    *tFile = tnFile;
+                }else{
+                    *tFile = NULL;
+                }
         }
         return inFileList;
 }
