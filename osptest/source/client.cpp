@@ -10,9 +10,6 @@
 #define MY_FILE_NAME             "~/zhangzheng/data/mydoc.7z"
 #define NATIVE_IP                "127.0.0.1"
 
-#if 0
-#define MAX_CMD_REPEAT_TIMES     5
-#endif
 
 API void Test_DisConnect();
 API void Test_Cancel();
@@ -439,7 +436,7 @@ void CCInstance::FileUploadCmd(CMessage*const pMsg){
 
         if(OSP_OK != post(MAKEIID(SERVER_APP_ID,CInstance::DAEMON),FILE_SHA1
                        ,sha1Buffer,41*sizeof(char),g_dwdstNode)){
-                OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal] post error\n");
+                OspLog(LOG_LVL_ERROR,"[FileUploadCmd] post error\n");
                 return;
         }
 
@@ -461,7 +458,6 @@ void CCInstance::FileUploadCmd(CMessage*const pMsg){
         }
 #endif
 
-        //连接和登陆状态由广播获得，若间隔太小则可能发生错误，调用的时候需要确保
         if(!g_bSignFlag){
                 OspLog(SYS_LOG_LEVEL,"[FileUploadCmd]did not sign in\n");
                 return;
@@ -993,7 +989,6 @@ void CCInstance::MsgProcessInit(){
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_FINISH_ACK),&CCInstance::FileFinishAck,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_CANCEL_ACK),&CCInstance::FileCancelAck,&m_tCmdChain);
         RegMsgProFun(MAKEESTATE(RUNNING_STATE,FILE_REMOVE_ACK),&CCInstance::FileRemoveAck,&m_tCmdChain);
-        
              //Deal Instance
              //Deamon 将这些Instance状态设置为RUNNING，防止因为立刻调用查询空闲函数导致这些instance
              //被其他任务(业务)查询之后调用，对于本地延迟没有效果，不考虑本地延迟
@@ -1027,7 +1022,7 @@ void CCInstance::NodeChainEnd(){
         }
 
         while(m_tCmdDaemonChain){
-                tmpNode = m_tCmdChain->next;
+                tmpNode = m_tCmdDaemonChain->next;
 #if THREAD_SAFE_MALLOC
                 free(m_tCmdDaemonChain);
 #else
@@ -1571,7 +1566,7 @@ postError2gui:
         strcpy((LPSTR)tGuiAck.FileName,(LPCSTR)file_name_path);
         if(OSP_OK != post(MAKEIID(GUI_APP_ID,DAEMON),GUI_FILE_GO_ON_ACK
                ,&tGuiAck,sizeof(tGuiAck),g_dwGuiNode)){
-                OspLog(LOG_LVL_ERROR,"[FileUploadCmdDeal]post error\n");
+                OspLog(LOG_LVL_ERROR,"[FileGoOnCmdDeal]post error\n");
         }
 
 }
